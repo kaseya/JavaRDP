@@ -11,27 +11,28 @@
  */
 package com.elusiva.rdp;
 
-import java.awt.*;
-import java.awt.event.*;
-
-import org.apache.log4j.Logger;
-import com.elusiva.rdp.Rdp;
-import com.elusiva.rdp.keymapping.KeyCode;
 import com.elusiva.rdp.keymapping.KeyCode_FileBased;
 import com.elusiva.rdp.menu.RdpMenu;
 import com.elusiva.rdp.rdp5.cliprdr.ClipChannel;
+import org.apache.log4j.Logger;
+
+import java.awt.*;
 
 //import javax.swing.Box;
 
-public abstract class RdesktopFrame extends Frame {  
+public abstract class RdesktopFrame extends Frame {
     
-	static Logger logger = Logger.getLogger(RdesktopFrame.class);
+	private static Logger logger = Logger.getLogger(RdesktopFrame.class);
 
-	public RdesktopCanvas canvas = null;
+	public RdesktopCanvas canvas;
 
-	public Rdp rdp = null;
+	private Rdp rdp;
 
-	public RdpMenu menu = null;
+	private RdpMenu menu;
+
+
+
+    protected Options option;
 
     /**
      * Register the clipboard channel
@@ -87,7 +88,7 @@ public abstract class RdesktopFrame extends Frame {
 		if (menu == null)
 			menu = new RdpMenu(this);
 
-		if (!menuVisible && Options.enable_menu)
+		if (!menuVisible && option.isMenuEnabled())
 			this.setMenuBar(menu);
 		canvas.repaint();
 		menuVisible = true;
@@ -97,7 +98,7 @@ public abstract class RdesktopFrame extends Frame {
      * Hide the menu bar
      */
 	public void hideMenu(){
-		if(menuVisible && Options.enable_menu) this.setMenuBar(null);
+		if(menuVisible && option.isMenuEnabled()) this.setMenuBar(null);
 		//canvas.setSize(this.WIDTH, this.HEIGHT);
 		canvas.repaint();
 		menuVisible = false;
@@ -119,24 +120,37 @@ public abstract class RdesktopFrame extends Frame {
      */
 	public RdesktopFrame() {
 		super();
-		setLayout(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        this.canvas = new RdesktopCanvas_Localised(option.getWidth(), option.getHeight(), option);
+        init();
+    }
 
-		menu = new RdpMenu(this);
-		setMenuBar(menu);
+    public RdesktopFrame(RdesktopCanvas_Localised canvas, Options option) {
+        super();
+        this.canvas = canvas;
+        this.option = option;
+        init();
+    }
 
-		Common.frame = this;
-		this.canvas = new RdesktopCanvas_Localised(Options.width, Options.height);
-		add(this.canvas);
-		setTitle(Options.windowTitle);
+    private void init() {
+         setLayout(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        logger.info("Title:" + option.getWindowTitle() + "MENU" + option.isMenuEnabled());
+
+		//Common.frame = this;
+
+        if (option.isMenuEnabled()) {
+		    menu = new RdpMenu(this);
+            this.setMenuBar(menu);
+        }
+        this.add(this.canvas);
+        setTitle(option.getWindowTitle());
 
 		if (Constants.OS == Constants.WINDOWS)
 			setResizable(false);
 		// Windows has to setResizable(false) before pack,
 		// else draws on the frame
 
-		if (Options.fullscreen) {
+		if (option.isFullscreen()) {
 			goFullScreen();
-			pack();
 			setLocation(0, 0);
 		} else {// centre
 			pack();
@@ -151,11 +165,11 @@ public abstract class RdesktopFrame extends Frame {
 			setResizable(false);
 		// Linux Java 1.3 needs pack() before setResizeable
 
-		addWindowListener(new RdesktopWindowAdapter());
-        canvas.addFocusListener(new RdesktopFocusListener());
+		addWindowListener(new RdesktopWindowAdapter(this, this.canvas, option));
+        canvas.addFocusListener(new RdesktopFocusListener(this.canvas, option));
         if (Constants.OS == Constants.WINDOWS) {
 			// redraws screen on window move
-			addComponentListener(new RdesktopComponentAdapter());
+			addComponentListener(new RdesktopComponentAdapter(this.canvas, option));
 		}
 
 		canvas.requestFocus();
@@ -187,147 +201,6 @@ public abstract class RdesktopFrame extends Frame {
 		canvas.registerKeyboard(keys);
 	}
 
-    class RdesktopFocusListener implements FocusListener {
-
-        public void focusGained(FocusEvent arg0) {
-            if (Constants.OS == Constants.WINDOWS) {
-                // canvas.repaint();
-                canvas.repaint(0, 0, Options.width, Options.height);
-            }
-            // gained focus..need to check state of locking keys
-            canvas.gainedFocus();
-        }
-
-        public void focusLost(FocusEvent arg0) {
-            //  lost focus - need clear keys that are down
-            canvas.lostFocus();            
-        }
-    }
-    
-	class RdesktopWindowAdapter extends WindowAdapter {
-
-		public void windowClosing(WindowEvent e) {
-			hide();
-			Rdesktop.exit(0, rdp, (RdesktopFrame) e.getWindow(), true);
-		}
-
-		public void windowLostFocus(WindowEvent e) {
-            logger.info("windowLostFocus");
-			// lost focus - need clear keys that are down
-			canvas.lostFocus();
-		}
-
-		public void windowDeiconified(WindowEvent e) {
-			if (Constants.OS == Constants.WINDOWS) {
-				// canvas.repaint();
-				canvas.repaint(0, 0, Options.width, Options.height);
-			}
-			canvas.gainedFocus();
-		}
-
-		public void windowActivated(WindowEvent e) {
-			if (Constants.OS == Constants.WINDOWS) {
-				// canvas.repaint();
-				canvas.repaint(0, 0, Options.width, Options.height);
-			}
-			// gained focus..need to check state of locking keys
-			canvas.gainedFocus();
-		}
-
-		public void windowGainedFocus(WindowEvent e) {
-			if (Constants.OS == Constants.WINDOWS) {
-				// canvas.repaint();
-				canvas.repaint(0, 0, Options.width, Options.height);
-			}
-			// gained focus..need to check state of locking keys
-			canvas.gainedFocus();
-		}
-	}
-
-	class RdesktopComponentAdapter extends ComponentAdapter {
-		public void componentMoved(ComponentEvent e) {
-			canvas.repaint(0, 0, Options.width, Options.height);
-		}
-	}
-
-	class YesNoDialog extends Dialog implements ActionListener {
-
-		Button yes, no;
-
-		boolean retry = false;
-
-		public YesNoDialog(Frame parent, String title, String[] message) {
-			super(parent, title, true);
-			// Box msg = Box.createVerticalBox();
-			// for(int i=0; i<message.length; i++) msg.add(new
-			// Label(message[i],Label.CENTER));
-			// this.add("Center",msg);
-			Panel msg = new Panel();
-			msg.setLayout(new GridLayout(message.length, 1));
-			for (int i = 0; i < message.length; i++)
-				msg.add(new Label(message[i], Label.CENTER));
-			this.add("Center", msg);
-
-			Panel p = new Panel();
-			p.setLayout(new FlowLayout());
-			yes = new Button("Yes");
-			yes.addActionListener(this);
-			p.add(yes);
-			no = new Button("No");
-			no.addActionListener(this);
-			p.add(no);
-			this.add("South", p);
-			this.pack();
-			if (getSize().width < 240)
-				setSize(new Dimension(240, getSize().height));
-
-			centreWindow(this);
-		}
-
-		public void actionPerformed(ActionEvent e) {
-			if (e.getSource() == yes)
-				retry = true;
-			else
-				retry = false;
-			this.hide();
-			this.dispose();
-		}
-	}
-
-	class OKDialog extends Dialog implements ActionListener {
-		public OKDialog(Frame parent, String title, String[] message) {
-
-			super(parent, title, true);
-			// Box msg = Box.createVerticalBox();
-			// for(int i=0; i<message.length; i++) msg.add(new
-			// Label(message[i],Label.CENTER));
-			// this.add("Center",msg);
-
-			Panel msg = new Panel();
-			msg.setLayout(new GridLayout(message.length, 1));
-			for (int i = 0; i < message.length; i++)
-				msg.add(new Label(message[i], Label.CENTER));
-			this.add("Center", msg);
-
-			Panel p = new Panel();
-			p.setLayout(new FlowLayout());
-			Button ok = new Button("OK");
-			ok.addActionListener(this);
-			p.add(ok);
-			this.add("South", p);
-			this.pack();
-
-			if (getSize().width < 240)
-				setSize(new Dimension(240, getSize().height));
-
-			centreWindow(this);
-		}
-
-		public void actionPerformed(ActionEvent e) {
-			this.hide();
-			this.dispose();
-		}
-	}
 
     /**
      * Display an error dialog with "Yes" and "No" buttons and the title "properJavaRDP error"
@@ -336,8 +209,8 @@ public abstract class RdesktopFrame extends Frame {
      */
 	public boolean showYesNoErrorDialog(String[] msg) {
 
-		YesNoDialog d = new YesNoDialog(this, "Elusiva Everywhere error", msg);
-		d.show();
+        YesNoDialog d = new YesNoDialog(this, "Error", msg);
+        d.show();
 		return d.retry;
 	}
 
@@ -346,7 +219,7 @@ public abstract class RdesktopFrame extends Frame {
      * @param msg Array of message lines to display in dialog box
      */
 	public void showErrorDialog(String[] msg) {
-		Dialog d = new OKDialog(this, "Elusiva Everywhere error", msg);
+		Dialog d = new OKDialog(this, "Error", msg);
 		d.show();
 	}
 
@@ -381,4 +254,15 @@ public abstract class RdesktopFrame extends Frame {
 		centreWindow(this);
 	}
 
+    public Options getOption() {
+        return option;
+    }
+
+    public void disconnectPlayer() {
+         if (rdp != null && rdp.isConnected()) {
+            logger.info("Disconnecting ...");
+            rdp.disconnect();
+            logger.info("Disconnected");
+        }
+    }
 }

@@ -14,16 +14,13 @@
 package com.elusiva.rdp;
 
 
-import java.awt.image.BufferedImage;
-
 import org.apache.log4j.Logger;
 
 public class RasterOp {
 	static Logger logger = Logger.getLogger(RdesktopCanvas.class);
 
-	private void ropInvert(WrappedImage biDst, int[] dest, int width, int x, int y, int cx, int cy,
-			int Bpp) {
-		int mask = Options.bpp_mask;
+	private void ropInvert(WrappedImage biDst, int[] dest, int width, int x, int y, int cx, int cy,Options option) {
+		int mask = option.getColourDepthCorrectionMaskPerBytes();
 		int pdest = (y * width + x);
 		for (int i = 0; i < cy; i++) {
 			for (int j = 0; j < cx; j++) {
@@ -37,8 +34,7 @@ public class RasterOp {
 		}
 	}
 
-	private void ropClear(WrappedImage biDst, int width, int x, int y, int cx, int cy,
-			int Bpp) {
+	private void ropClear(WrappedImage biDst, int x, int y, int cx, int cy ) {
 
 	    for(int i = x; i < x+cx; i++){
 	            for(int j = y; j < y+cy; j++)
@@ -46,10 +42,9 @@ public class RasterOp {
 	    }
 	}
 
-	private void ropSet(WrappedImage biDst, int width, int x, int y, int cx, int cy,
-			int Bpp) {
+	private void ropSet(WrappedImage biDst, int x, int y, int cx, int cy, Options option) {
         
-        int mask = Options.bpp_mask;
+        int mask = option.getColourDepthCorrectionMaskPerBytes();
         
             for(int i = x; i < x+cx; i++){
                 for(int j = y; j < y+cy; j++)
@@ -58,8 +53,7 @@ public class RasterOp {
 
     }
 
-	private void ropCopy(WrappedImage biDst, int dstwidth, int x, int y, int cx, int cy,
-			int[] src, int srcwidth, int srcx, int srcy, int Bpp) {
+	private void ropCopy(WrappedImage biDst, int x, int y, int cx, int cy, int[] src, int srcx, int srcy) {
 
 		if (src == null) { // special case - copy to self
             int[] imgSec = null;
@@ -91,66 +85,67 @@ public class RasterOp {
      * @param srcwidth Width of source data
      * @param srcx X-offset of source area within source data
      * @param srcy Y-offset of source area within source data
+     * @param option
      */
 	public void do_array(int opcode, WrappedImage biDst, int dstwidth, int x, int y,
-			int cx, int cy, int[] src, int srcwidth, int srcx, int srcy) {
-		int Bpp = Options.Bpp;
+                         int cx, int cy, int[] src, int srcwidth, int srcx, int srcy, Options option) {
+		int Bpp = option.getColourDepthInBytes();
         //int[] dst = null;
 		// System.out.println("do_array: opcode = 0x" +
 		// Integer.toHexString(opcode) );
 		switch (opcode) {
 		case 0x0:
-			ropClear(biDst, dstwidth, x, y, cx, cy, Bpp);
+			ropClear(biDst, x, y, cx, cy);
 			break;
 		case 0x1:
-			ropNor(biDst, dstwidth, x, y, cx, cy, src, srcwidth, srcx, srcy, Bpp);
+			ropNor(biDst, x, y, cx, cy, src, srcwidth, srcx, srcy, option);
 			break;
 		case 0x2:
-			ropAndInverted(biDst, dstwidth, x, y, cx, cy, src, srcwidth, srcx,
-					srcy, Bpp);
+			ropAndInverted(biDst, x, y, cx, cy, src, srcwidth, srcx,
+					srcy, option);
 			break;
 		case 0x3: // CopyInverted
-			ropInvert(biDst, src, srcwidth, srcx, srcy, cx, cy, Bpp);
-			ropCopy(biDst, dstwidth, x, y, cx, cy, src, srcwidth, srcx, srcy, Bpp);
+			ropInvert(biDst, src, srcwidth, srcx, srcy, cx, cy, option);
+			ropCopy(biDst, x, y, cx, cy, src, srcx, srcy);
 			break;
 		case 0x4: // AndReverse
-			ropInvert(biDst, null, dstwidth, x, y, cx, cy, Bpp);
-			ropAnd(biDst, dstwidth, x, y, cx, cy, src, srcwidth, srcx, srcy, Bpp);
+			ropInvert(biDst, null, dstwidth, x, y, cx, cy, option);
+			ropAnd(biDst, x, y, cx, cy, src, srcwidth, srcx, srcy, option);
 			break;
 		case 0x5:
-			ropInvert(biDst, null, dstwidth, x, y, cx, cy, Bpp);
+			ropInvert(biDst, null, dstwidth, x, y, cx, cy, option);
 			break;
 		case 0x6:
-			ropXor(biDst, dstwidth, x, y, cx, cy, src, srcwidth, srcx, srcy, Bpp);
+			ropXor(biDst, x, y, cx, cy, src, srcwidth, srcx, srcy, option);
 			break;
 		case 0x7:
-			ropNand(biDst, dstwidth, x, y, cx, cy, src, srcwidth, srcx, srcy, Bpp);
+			ropNand(biDst, x, y, cx, cy, src, srcwidth, srcx, srcy, option);
 			break;
 		case 0x8:
-			ropAnd(biDst, dstwidth, x, y, cx, cy, src, srcwidth, srcx, srcy, Bpp);
+			ropAnd(biDst, x, y, cx, cy, src, srcwidth, srcx, srcy, option);
 			break;
 		case 0x9:
-			ropEquiv(biDst, dstwidth, x, y, cx, cy, src, srcwidth, srcx, srcy,
-					Bpp);
+			ropEquiv(biDst, x, y, cx, cy, src, srcwidth, srcx, srcy,
+                    option);
 			break;
 		case 0xa: // Noop
 			break;
 		case 0xb:
-			ropOrInverted(biDst, dstwidth, x, y, cx, cy, src, srcwidth, srcx,
-					srcy, Bpp);
+			ropOrInverted(biDst, x, y, cx, cy, src, srcwidth, srcx,
+					srcy, option);
 			break;
 		case 0xc:
-			ropCopy(biDst, dstwidth, x, y, cx, cy, src, srcwidth, srcx, srcy, Bpp);
+			ropCopy(biDst, x, y, cx, cy, src, srcx, srcy);
 			break;
 		case 0xd: // OrReverse
-			ropInvert(biDst, null, dstwidth, x, y, cx, cy, Bpp);
-			ropOr(biDst, dstwidth, x, y, cx, cy, src, srcwidth, srcx, srcy, Bpp);
+			ropInvert(biDst, null, dstwidth, x, y, cx, cy, option);
+			ropOr(biDst, x, y, cx, cy, src, srcwidth, srcx, srcy, option);
 			break;
 		case 0xe:
-			ropOr(biDst, dstwidth, x, y, cx, cy, src, srcwidth, srcx, srcy, Bpp);
+			ropOr(biDst, x, y, cx, cy, src, srcwidth, srcx, srcy, option);
 			break;
 		case 0xf:
-			ropSet(biDst, dstwidth, x, y, cx, cy, Bpp);
+			ropSet(biDst, x, y, cx, cy, option);
 			break;
 		default:
 			logger.warn("do_array unsupported opcode: " + opcode);
@@ -165,9 +160,10 @@ public class RasterOp {
      * @param x X-coordinate of pixel to modify
      * @param y Y-coordinate of pixel to modify
      * @param color Colour to use in operation (unused for some operations)
+     * @param option
      */
-    public void do_pixel(int opcode, WrappedImage dst, int x, int y, int color) {
-        int mask = Options.bpp_mask;
+    public void do_pixel(int opcode, WrappedImage dst, int x, int y, int color, Options option) {
+        int mask = option.getColourDepthCorrectionMaskPerBytes();
         
         if(dst == null) return;
         
@@ -195,10 +191,10 @@ public class RasterOp {
         }
     }
 
-	private void ropNor(WrappedImage biDst, int dstwidth, int x, int y, int cx, int cy,
-			int[] src, int srcwidth, int srcx, int srcy, int Bpp) {
+	private void ropNor(WrappedImage biDst, int x, int y, int cx, int cy,
+                        int[] src, int srcwidth, int srcx, int srcy, Options option) {
 		// opcode 0x1
-		int mask = Options.bpp_mask;
+		int mask = option.getColourDepthCorrectionMaskPerBytes();
 		int psrc = (srcy * srcwidth + srcx);
 
         for (int row = 0; row < cy; row++) {
@@ -209,10 +205,10 @@ public class RasterOp {
 		}
 	}
 
-	private void ropAndInverted(WrappedImage biDst, int dstwidth, int x, int y, int cx,
-			int cy, int[] src, int srcwidth, int srcx, int srcy, int Bpp) {
+	private void ropAndInverted(WrappedImage biDst, int x, int y, int cx,
+                                int cy, int[] src, int srcwidth, int srcx, int srcy, Options option) {
 		// opcode 0x2
-		int mask = Options.bpp_mask;
+		int mask = option.getColourDepthCorrectionMaskPerBytes();
 		int psrc = (srcy * srcwidth + srcx);
 		for (int row = 0; row < cy; row++) {
 			for (int col = 0; col < cx; col++) {
@@ -224,10 +220,10 @@ public class RasterOp {
 		}
 	}
 
-	private void ropXor(WrappedImage biDst, int dstwidth, int x, int y, int cx, int cy,
-			int[] src, int srcwidth, int srcx, int srcy, int Bpp) {
+	private void ropXor(WrappedImage biDst, int x, int y, int cx, int cy,
+                        int[] src, int srcwidth, int srcx, int srcy, Options option) {
 		// opcode 0x6
-		int mask = Options.bpp_mask;
+		int mask = option.getColourDepthCorrectionMaskPerBytes();
 		int psrc = (srcy * srcwidth + srcx);
 		for (int row = 0; row < cy; row++) {
 			for (int col = 0; col < cx; col++) {
@@ -239,10 +235,10 @@ public class RasterOp {
 		}
 	}
 
-	private void ropNand(WrappedImage biDst, int dstwidth, int x, int y, int cx, int cy,
-			int[] src, int srcwidth, int srcx, int srcy, int Bpp) {
+	private void ropNand(WrappedImage biDst, int x, int y, int cx, int cy,
+                         int[] src, int srcwidth, int srcx, int srcy, Options option) {
 		// opcode 0x7
-		int mask = Options.bpp_mask;
+		int mask = option.getColourDepthCorrectionMaskPerBytes();
 		int psrc = (srcy * srcwidth + srcx);
 		for (int row = 0; row < cy; row++) {
 			for (int col = 0; col < cx; col++) {
@@ -254,10 +250,10 @@ public class RasterOp {
 		}
 	}
 
-	private void ropAnd(WrappedImage biDst, int dstwidth, int x, int y, int cx, int cy,
-			int[] src, int srcwidth, int srcx, int srcy, int Bpp) {
+	private void ropAnd(WrappedImage biDst, int x, int y, int cx, int cy,
+                        int[] src, int srcwidth, int srcx, int srcy, Options option) {
 		// opcode 0x8
-		int mask = Options.bpp_mask;
+		int mask = option.getColourDepthCorrectionMaskPerBytes();
 		int psrc = (srcy * srcwidth + srcx);
 		for (int row = 0; row < cy; row++) {
 			for (int col = 0; col < cx; col++) {
@@ -269,10 +265,10 @@ public class RasterOp {
 		}
 	}
 
-	private void ropEquiv(WrappedImage biDst, int dstwidth, int x, int y, int cx,
-			int cy, int[] src, int srcwidth, int srcx, int srcy, int Bpp) {
+	private void ropEquiv(WrappedImage biDst, int x, int y, int cx,
+                          int cy, int[] src, int srcwidth, int srcx, int srcy, Options option) {
 		// opcode 0x9
-		int mask = Options.bpp_mask;
+		int mask = option.getColourDepthCorrectionMaskPerBytes();
 		int psrc = (srcy * srcwidth + srcx);
 		for (int row = 0; row < cy; row++) {
 			for (int col = 0; col < cx; col++) {
@@ -284,10 +280,10 @@ public class RasterOp {
 		}
 	}
 
-	private void ropOrInverted(WrappedImage biDst, int dstwidth, int x, int y, int cx,
-			int cy, int[] src, int srcwidth, int srcx, int srcy, int Bpp) {
+	private void ropOrInverted(WrappedImage biDst, int x, int y, int cx,
+                               int cy, int[] src, int srcwidth, int srcx, int srcy, Options option) {
 		// opcode 0xb
-		int mask = Options.bpp_mask;
+		int mask = option.getColourDepthCorrectionMaskPerBytes();
 		int psrc = (srcy * srcwidth + srcx);
 		for (int row = 0; row < cy; row++) {
 			for (int col = 0; col < cx; col++) {
@@ -299,10 +295,10 @@ public class RasterOp {
 		}
 	}
 
-	private void ropOr(WrappedImage biDst, int dstwidth, int x, int y, int cx, int cy,
-			int[] src, int srcwidth, int srcx, int srcy, int Bpp) {
+	private void ropOr(WrappedImage biDst, int x, int y, int cx, int cy,
+                       int[] src, int srcwidth, int srcx, int srcy, Options option) {
 		// opcode 0xe
-		int mask = Options.bpp_mask;
+		int mask = option.getColourDepthCorrectionMaskPerBytes();
 		int psrc = (srcy * srcwidth + srcx);
 		for (int row = 0; row < cy; row++) {
 			for (int col = 0; col < cx; col++) {

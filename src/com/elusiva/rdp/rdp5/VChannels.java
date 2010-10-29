@@ -134,11 +134,12 @@ public class VChannels {
     /**
      * Register a new virtual channel
      * @param v Virtual channel to be registered
+     * @param option
      * @return True if successful
      * @throws RdesktopException
      */
-    public boolean register(VChannel v) throws RdesktopException {
-        if (!Options.use_rdp5) {
+    public boolean register(VChannel v, Options option) throws RdesktopException {
+        if (!option.shouldUseRdp5()) {
             return false;
         }
 

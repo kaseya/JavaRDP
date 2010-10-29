@@ -14,10 +14,6 @@
 package com.elusiva.rdp;
 
 import java.awt.Graphics;
-import java.awt.GraphicsConfiguration;
-import java.awt.GraphicsDevice;
-import java.awt.GraphicsEnvironment;
-import java.awt.Transparency;
 import java.awt.image.BufferedImage;
 import java.awt.image.IndexColorModel;
 

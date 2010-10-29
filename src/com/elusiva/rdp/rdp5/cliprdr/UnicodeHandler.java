@@ -15,7 +15,6 @@ import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.StringSelection;
 import java.awt.datatransfer.Transferable;
 
-import com.elusiva.rdp.Common;
 import com.elusiva.rdp.RdpPacket;
 import com.elusiva.rdp.RdpPacket_Localised;
 import com.elusiva.rdp.Utilities_Localised;

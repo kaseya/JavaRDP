@@ -35,9 +35,9 @@ public class Bitmap {
 
 	protected static Logger logger = Logger.getLogger(Rdp.class);
   
-    public static int convertTo24(int colour){
-        if(Options.server_bpp == 15) return convert15to24(colour);
-        if(Options.server_bpp == 16) return convert16to24(colour);
+    public static int convertTo24(int colour, Options option){
+        if(option.isServerDisplayColourDepthFifteenBits()) return convert15to24(colour);
+        if(option.isServerDisplayColourDepthSixteenBits()) return convert16to24(colour);
         return colour;
     }
     
@@ -73,11 +73,12 @@ public class Bitmap {
      * @param data Array to read from
      * @param offset Offset in array to read from
      * @param Bpp Number of bytes to read
+     * @param option
      * @return
      */
-	static int cvalx(byte[] data, int offset, int Bpp) {
+	static int cvalx(byte[] data, int offset, int Bpp, Options option) {
 		int rv = 0;
-        if(Options.server_bpp == 15){
+        if(option.isServerDisplayColourDepthFifteenBits()){
             int lower = data[offset] & 0xFF;
             int full = (data[offset + 1] & 0xFF) << 8 | lower;     
             
@@ -87,7 +88,7 @@ public class Bitmap {
             
             return (r24 << 16) | (g24 << 8) | b24;
             
-        }else if(Options.server_bpp == 16){
+        }else if(option.isServerDisplayColourDepthSixteenBits()){
             int lower = data[offset] & 0xFF;
             int full = (data[offset + 1] & 0xFF) << 8 | lower;          
 
@@ -149,9 +150,10 @@ public class Bitmap {
      * Convert byte array representing a bitmap into integer array of pixels
      * @param bitmap Byte array of bitmap data
      * @param Bpp Bytes-per-pixel for bitmap
+     * @param option
      * @return Integer array of pixel data representing input image data
      */
-	static int[] convertImage(byte[] bitmap, int Bpp) {
+	static int[] convertImage(byte[] bitmap, int Bpp, Options option) {
 		int[] out = new int[bitmap.length / Bpp];
 
 		for (int i = 0; i < out.length; i++) {
@@ -164,7 +166,7 @@ public class Bitmap {
 				out[i] = ((bitmap[i * Bpp + 2] & 0xFF) << 16)
 						| ((bitmap[i * Bpp + 1] & 0xFF) << 8)
 						| (bitmap[i * Bpp] & 0xFF);
-			out[i] = Bitmap.convertTo24(out[i]);
+			out[i] = Bitmap.convertTo24(out[i], option);
 		}
 		return out;
 	}
@@ -190,12 +192,13 @@ public class Bitmap {
      * @param data Array of pixel data, each pixel represented by Bpp bytes. Should have a length of width*height*Bpp.
      * @param width Width of bitmap represented by data
      * @param height Height of bitmap represented by data
-     * @param x Desired x-coordinate of bitmap 
+     * @param x Desired x-coordinate of bitmap
      * @param y Desired y-coordinate of bitmap
      * @param Bpp Number of bytes per pixel in image represented by data
+     * @param option
      */
-    public Bitmap(byte[] data, int width, int height, int x, int y, int Bpp) {
-        this.highdata = Bitmap.convertImage(data,Bpp);
+    public Bitmap(byte[] data, int width, int height, int x, int y, int Bpp, Options option) {
+        this.highdata = Bitmap.convertImage(data,Bpp, option);
         this.width = width;
         this.height = height;
         this.x = x;
@@ -253,10 +256,11 @@ public class Bitmap {
      * @param left X offset for drawing bitmap
      * @param top Y offset for drawing bitmap
      * @param w Image to draw bitmap to
+     * @param option
      * @return Original image object, with decompressed bitmap drawn at specified coordinates
      * @throws RdesktopException
 	 */
-    public static WrappedImage decompressImgDirect(int width, int height, int size, RdpPacket_Localised data, int Bpp, IndexColorModel cm, int left, int top, WrappedImage w) throws RdesktopException {
+    public static WrappedImage decompressImgDirect(int width, int height, int size, RdpPacket_Localised data, int Bpp, IndexColorModel cm, int left, int top, WrappedImage w, Options option) throws RdesktopException {
 
         //WrappedImage w = null;
         
@@ -330,18 +334,18 @@ public class Bitmap {
                     insertmix = true;
                 break;
             case 8: /* Bicolor */
-                color1 = cvalx(compressed_pixel, input, Bpp);
+                color1 = cvalx(compressed_pixel, input, Bpp, option);
                     //(compressed_pixel[input++]&0x000000ff);
                 input += Bpp;
             case 3: /* Color */
-                color2 = cvalx(compressed_pixel, input, Bpp);
+                color2 = cvalx(compressed_pixel, input, Bpp, option);
                 //color2 = (compressed_pixel[input++]&0x000000ff);
                 input += Bpp;
                 break;
             case 6: /* SetMix/Mix */
             case 7: /* SetMix/FillOrMix */
                 // mix = compressed_pixel[input++];
-                mix = cvalx(compressed_pixel, input, Bpp);
+                mix = cvalx(compressed_pixel, input, Bpp, option);
                 input += Bpp;
                 opcode -= 5;
                 break;
@@ -560,7 +564,7 @@ public class Bitmap {
                     while (((count & ~0x7) != 0) && ((x + 8) < width)) {
                         for (int i = 0; i < 8; i++) {
                             // pixel[line + x] = cvalx(compressed_pixel, input, Bpp);
-                            w.setRGB(left+x,top+height,cvalx(compressed_pixel, input, Bpp));
+                            w.setRGB(left+x,top+height,cvalx(compressed_pixel, input, Bpp, option));
                             input += Bpp;
                             count--;
                             x++;
@@ -568,7 +572,7 @@ public class Bitmap {
                     }
                     while ((count > 0) && (x < width)) {
                         // pixel[line + x] = cvalx(compressed_pixel, input, Bpp);
-                        w.setRGB(left+x,top+height,cvalx(compressed_pixel, input, Bpp));
+                        w.setRGB(left+x,top+height,cvalx(compressed_pixel, input, Bpp, option));
                         input += Bpp;
                         count--;
                         x++;
@@ -650,7 +654,7 @@ public class Bitmap {
             }
         }
 
-       /* if(Options.server_bpp == 16){
+       /* if(option.server_bpp == 16){
             for(int i = 0; i < pixel.length; i++) pixel[i] = Bitmap.convert16to24(pixel[i]);
         }*/
         
@@ -665,10 +669,11 @@ public class Bitmap {
      * @param data Packet containing bitmap data
      * @param Bpp Bytes per-pixel for bitmap
      * @param cm Colour model for bitmap (if using indexed palette)
+     * @param option
      * @return Decompressed bitmap as Image object
      * @throws RdesktopException
      */
-    public static Image decompressImg(int width, int height, int size, RdpPacket_Localised data, int Bpp, IndexColorModel cm) throws RdesktopException {
+    public static Image decompressImg(int width, int height, int size, RdpPacket_Localised data, int Bpp, IndexColorModel cm, Options option) throws RdesktopException {
 
         WrappedImage w = null;
         
@@ -747,18 +752,18 @@ public class Bitmap {
                     insertmix = true;
                 break;
             case 8: /* Bicolor */
-                color1 = cvalx(compressed_pixel, input, Bpp);
+                color1 = cvalx(compressed_pixel, input, Bpp, option);
                     //(compressed_pixel[input++]&0x000000ff);
                 input += Bpp;
             case 3: /* Color */
-                color2 = cvalx(compressed_pixel, input, Bpp);
+                color2 = cvalx(compressed_pixel, input, Bpp, option);
                 //color2 = (compressed_pixel[input++]&0x000000ff);
                 input += Bpp;
                 break;
             case 6: /* SetMix/Mix */
             case 7: /* SetMix/FillOrMix */
                 // mix = compressed_pixel[input++];
-                mix = cvalx(compressed_pixel, input, Bpp);
+                mix = cvalx(compressed_pixel, input, Bpp, option);
                 input += Bpp;
                 opcode -= 5;
                 break;
@@ -977,7 +982,7 @@ public class Bitmap {
                     while (((count & ~0x7) != 0) && ((x + 8) < width)) {
                         for (int i = 0; i < 8; i++) {
                             // pixel[line + x] = cvalx(compressed_pixel, input, Bpp);
-                            w.setRGB(x,height,cvalx(compressed_pixel, input, Bpp));
+                            w.setRGB(x,height,cvalx(compressed_pixel, input, Bpp, option));
                             input += Bpp;
                             count--;
                             x++;
@@ -985,7 +990,7 @@ public class Bitmap {
                     }
                     while ((count > 0) && (x < width)) {
                         // pixel[line + x] = cvalx(compressed_pixel, input, Bpp);
-                        w.setRGB(x,height,cvalx(compressed_pixel, input, Bpp));
+                        w.setRGB(x,height,cvalx(compressed_pixel, input, Bpp, option));
                         input += Bpp;
                         // pixel[line+x] = compressed_pixel[input++];
                         count--;
@@ -1068,7 +1073,7 @@ public class Bitmap {
             }
         }
 
-       /* if(Options.server_bpp == 16){
+       /* if(option.server_bpp == 16){
             for(int i = 0; i < pixel.length; i++) pixel[i] = Bitmap.convert16to24(pixel[i]);
         }*/
         
@@ -1082,10 +1087,11 @@ public class Bitmap {
      * @param size Size of compressed data in bytes
      * @param data Packet containing bitmap data
      * @param Bpp Bytes per-pixel for bitmap
+     * @param option
      * @return Integer array of pixels containing decompressed bitmap data
      * @throws RdesktopException
      */
-	public static int[] decompressInt(int width, int height, int size, RdpPacket_Localised data, int Bpp) throws RdesktopException {
+	public static int[] decompressInt(int width, int height, int size, RdpPacket_Localised data, int Bpp, Options option) throws RdesktopException {
 
 		byte[] compressed_pixel = new byte[size];
 		data.copyToByteArray(compressed_pixel, 0, data.getPosition(), size);
@@ -1158,18 +1164,18 @@ public class Bitmap {
 					insertmix = true;
 				break;
 			case 8: /* Bicolor */
-				color1 = cvalx(compressed_pixel, input, Bpp);
+				color1 = cvalx(compressed_pixel, input, Bpp, option);
 					//(compressed_pixel[input++]&0x000000ff);
 				input += Bpp;
 			case 3: /* Color */
-				color2 = cvalx(compressed_pixel, input, Bpp);
+				color2 = cvalx(compressed_pixel, input, Bpp, option);
 				//color2 = (compressed_pixel[input++]&0x000000ff);
 				input += Bpp;
 				break;
 			case 6: /* SetMix/Mix */
 			case 7: /* SetMix/FillOrMix */
 				// mix = compressed_pixel[input++];
-				mix = cvalx(compressed_pixel, input, Bpp);
+				mix = cvalx(compressed_pixel, input, Bpp, option);
 				input += Bpp;
 				opcode -= 5;
 				break;
@@ -1390,7 +1396,7 @@ public class Bitmap {
 							// input, Bpp), Bpp);
 							// pixel[line+x] = compressed_pixel[input++];
 							pixel[line + x] = cvalx(compressed_pixel, input,
-									Bpp);
+									Bpp, option);
 							input += Bpp;
 							count--;
 							x++;
@@ -1399,7 +1405,7 @@ public class Bitmap {
 					while ((count > 0) && (x < width)) {
 						// setli(pixel, line, x, cvalx(compressed_pixel,
 						// input,Bpp), Bpp);
-						pixel[line + x] = cvalx(compressed_pixel, input, Bpp);
+						pixel[line + x] = cvalx(compressed_pixel, input, Bpp, option);
 						input += Bpp;
 						// pixel[line+x] = compressed_pixel[input++];
 						count--;
@@ -1482,7 +1488,7 @@ public class Bitmap {
 			}
 		}
 
-       /* if(Options.server_bpp == 16){
+       /* if(option.server_bpp == 16){
             for(int i = 0; i < pixel.length; i++) pixel[i] = Bitmap.convert16to24(pixel[i]);
         }*/
         

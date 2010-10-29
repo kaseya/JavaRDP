@@ -25,4 +25,13 @@ public class Constants {
     public static final int MAC = 3;
     
     public static int OS = 0;
+
+    public static boolean isBrowserRunningOnMac() {
+        return OS == MAC;
+    }
+
+    public static boolean isBrowserRunningOnWindows() {
+        return OS == WINDOWS;
+    }
+
 }

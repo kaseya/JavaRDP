@@ -20,7 +20,6 @@ import com.elusiva.rdp.keymapping.KeyMapException;
 import org.apache.log4j.Logger;
 import org.apache.log4j.Level;
 import java.awt.event.*;
-import java.io.InputStream;
 import java.util.Vector;
 
 public abstract class Input {
@@ -81,18 +80,21 @@ public abstract class Input {
 	protected RdesktopCanvas canvas = null;
 	protected Rdp rdp = null;
 	KeyCode keys = null;
+    protected Options option;
 
     /**
      * Create a new Input object with a given keymap object
      * @param c Canvas on which to listen for input events
      * @param r Rdp layer on which to send input messages
      * @param k Key map to use in handling keyboard events
+     * @param option
      */
-	public Input(RdesktopCanvas c, Rdp r, KeyCode_FileBased k) {
+	public Input(RdesktopCanvas c, Rdp r, KeyCode_FileBased k, Options option) {
 		newKeyMapper = k;
 		canvas = c;
 		rdp = r;
-		if (Options.debug_keyboard)
+        this.option = option;
+		if (option.isKeyboardDebugEnabled())
 			logger.setLevel(Level.DEBUG);
 		addInputListeners();
 		pressedKeys = new Vector();
@@ -103,10 +105,11 @@ public abstract class Input {
      * @param c Canvas on which to listen for input events
      * @param r Rdp layer on which to send input messages
      * @param keymapFile Path to file containing keymap data
+     * @param option
      */
-	public Input(RdesktopCanvas c, Rdp r, String keymapFile) {
+	public Input(RdesktopCanvas c, Rdp r, String keymapFile, Options option) {
 		try {
-			newKeyMapper = new KeyCode_FileBased_Localised(keymapFile);
+			newKeyMapper = new KeyCode_FileBased_Localised(keymapFile, option);
 		} catch (KeyMapException kmEx) {
 			System.err.println(kmEx.getMessage());
 			if(!Common.underApplet) System.exit(-1);
@@ -114,9 +117,10 @@ public abstract class Input {
 
 		canvas = c;
 		rdp = r;
-		if (Options.debug_keyboard)
+		if (option.isKeyboardDebugEnabled())
 			logger.setLevel(Level.DEBUG);
 		addInputListeners();
+        this.option = option;
 		pressedKeys = new Vector();
 	}
 
@@ -524,9 +528,9 @@ public abstract class Input {
 			altDown = pressed;
 			return false;
 		case KeyEvent.VK_CAPS_LOCK:
-			if (pressed && Options.caps_sends_up_and_down)
+			if (pressed && option.isCapsSendsUpAndDownEnabled())
 				capsLockOn = !capsLockOn;
-			if (!Options.caps_sends_up_and_down) {
+			if (option.isCapsSendsUpAndDownNotEnabled()) {
 				if (pressed)
 					capsLockOn = true;
 				else
@@ -651,7 +655,10 @@ public abstract class Input {
 		}
 
 		public void mousePressed(MouseEvent e) {
-			if(e.getY() != 0) ((RdesktopFrame_Localised) canvas.getParent()).hideMenu();
+            if(e.getY() != 0) {
+                if ( canvas.getParent() instanceof RdesktopFrame_Localised )
+                ((RdesktopFrame_Localised) canvas.getParent()).hideMenu();
+            }
 			
 			int time = getTime();
 			if (rdp != null) {

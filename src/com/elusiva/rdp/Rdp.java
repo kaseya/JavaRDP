@@ -213,6 +213,10 @@ public class Rdp {
 
     private RdpPacket_Localised stream = null;
 
+    private Options option;
+    private boolean isUserLoggedOn;
+    private boolean isReadyToSendData;
+
     /*
      * private final byte[] canned_caps = { (byte)0x01, (byte)0x00, (byte)0x00,
      * (byte)0x00, (byte)0x09, (byte)0x04, (byte)0x00, (byte)0x00, (byte)0x04,
@@ -281,22 +285,24 @@ public class Rdp {
     /**
      * Process a general capability set
      * @param data Packet containing capability set data at current read position
+     * @param option
      */
-    static void processGeneralCaps(RdpPacket_Localised data) {
+    static void processGeneralCaps(RdpPacket_Localised data, Options option) {
         int pad2octetsB; /* rdp5 flags? */
 
         data.incrementPosition(10); // in_uint8s(s, 10);
         pad2octetsB = data.getLittleEndian16(); // in_uint16_le(s, pad2octetsB);
 
         if (pad2octetsB != 0)
-            Options.use_rdp5 = false;
+            option.disableUseOfRdp5();
     }
 
     /**
      * Process a bitmap capability set
      * @param data Packet containing capability set data at current read position
+     * @param option
      */
-    static void processBitmapCaps(RdpPacket_Localised data) {
+    static void processBitmapCaps(RdpPacket_Localised data, Options option) {
         int width, height, bpp;
 
         bpp = data.getLittleEndian16(); // in_uint16_le(s, bpp);
@@ -305,23 +311,23 @@ public class Rdp {
         width = data.getLittleEndian16(); // in_uint16_le(s, width);
         height = data.getLittleEndian16(); // in_uint16_le(s, height);
 
-        logger.debug("setting desktop size and bpp to: " + width + "x" + height
+        logger.info("setting desktop size and bpp to: " + width + "x" + height
                 + "x" + bpp);
 
         /*
          * The server may limit bpp and change the size of the desktop (for
          * example when shadowing another session).
          */
-        if (Options.server_bpp != bpp) {
-            logger.warn("colour depth changed from " + Options.server_bpp
+        if (option.getServerDisplayColourDepthInBits() != bpp) {
+            logger.warn("colour depth changed from " + option.getServerDisplayColourDepthInBits()
                     + " to " + bpp);
-            Options.server_bpp = bpp;
+            option.setServerDisplayColourDepthBits(bpp);
         }
-        if (Options.width != width || Options.height != height) {
-            logger.warn("screen size changed from " + Options.width + "x"
-                    + Options.height + " to " + width + "x" + height);
-            Options.width = width;
-            Options.height = height;
+        if (option.getWidth() != width || option.getHeight() != height) {
+            logger.warn("screen size changed from " + option.getWidth() + "x"
+                    + option.getHeight() + " to " + width + "x" + height);
+            option.setWidth(width);
+            option.setHeight(height);
             // ui_resize_window(); TODO: implement resize thingy
         }
     }
@@ -353,11 +359,11 @@ public class Rdp {
 
             switch (capset_type) {
             case RDP_CAPSET_GENERAL:
-                processGeneralCaps(data);
+                processGeneralCaps(data, this.option);
                 break;
 
             case RDP_CAPSET_BITMAP:
-                processBitmapCaps(data);
+                processBitmapCaps(data, this.option);
                 break;
             }
 
@@ -375,16 +381,23 @@ public class Rdp {
         return data.getLittleEndian32();
     }
 
+
     /**
      * Initialise RDP comms layer, and register virtual channels
      * @param channels Virtual channels to be used in connection
      */
-    public Rdp(VChannels channels) {
-        this.SecureLayer = new Secure(channels);
-        Common.secure = SecureLayer;
+    public Rdp(VChannels channels, Options option) {
+        this(option, new Secure(channels,option));
+    }
+
+     public Rdp(Options option, Secure secureLayer) {
+        this.SecureLayer = secureLayer;
         this.orders = new Orders();
         this.cache = new Cache();
         orders.registerCache(cache);
+        this.option = option;
+        this.isUserLoggedOn = false;
+        this.isReadyToSendData = false;
     }
 
     /**
@@ -454,7 +467,7 @@ public class Rdp {
         int length = 0;
 
         if ((this.stream == null) || (this.next_packet >= this.stream.getEnd())) {
-            this.stream = SecureLayer.receive();
+            this.stream = SecureLayer.receive(this);
             if (stream == null)
                 return null;
             this.next_packet = this.stream.getPosition();
@@ -477,54 +490,6 @@ public class Rdp {
 
         this.next_packet += length;
         return stream;
-    }
-
-    /**
-     * Connect to a server
-     * @param username Username for log on
-     * @param server Server to connect to
-     * @param flags Flags defining logon type
-     * @param domain Domain for log on
-     * @param password Password for log on
-     * @param command Alternative shell for session
-     * @param directory Initial working directory for connection
-     * @throws ConnectionException
-     */
-    public void connect(String username, InetAddress server, int flags,
-            String domain, String password, String command, String directory)
-            throws ConnectionException {
-        try {
-            SecureLayer.connect(server);
-            this.connected = true;
-            this.sendLogonInfo(flags, domain, username, password, command,
-                    directory);
-        }
-        // Handle an unresolvable hostname
-        catch (UnknownHostException e) {
-            throw new ConnectionException("Could not resolve host name: "
-                    + server);
-        }
-        // Handle a refused connection
-        catch (ConnectException e) {
-            throw new ConnectionException(
-                    "Connection refused when trying to connect to " + server
-                            + " on port " + Options.port);
-        }
-        // Handle a timeout on connecting
-        catch (NoRouteToHostException e) {
-            throw new ConnectionException(
-                    "Connection timed out when attempting to connect to "
-                            + server);
-        } catch (IOException e) {
-            throw new ConnectionException("Connection Failed");
-        } catch (RdesktopException e) {
-            throw new ConnectionException(e.getMessage());
-        } catch (OrderException e) {
-            throw new ConnectionException(e.getMessage());
-        } catch (CryptoException e) {
-            throw new ConnectionException(e.getMessage());
-        }
-
     }
 
     /**
@@ -561,7 +526,7 @@ public class Rdp {
             CryptoException {
         int[] type = new int[1];
 
-        boolean disc = false; /* True when a disconnect PDU was received */
+        boolean disconnect = false; /* True when a disconnect PDU was received */
         boolean cont = true;
 
         RdpPacket_Localised data = null;
@@ -585,9 +550,13 @@ public class Rdp {
                 this.processDemandActive(data);
                 // can use this to trigger things that have to be done before
                 // 1st order
-                logger.debug("ready to send (got past licence negotiation)");
-                Rdesktop.readytosend = true;
-                frame.triggerReadyToSend();
+                logger.info("ready to send (got past licence negotiation)");
+                this.isReadyToSendData = true;
+                if ( frame != null ) {
+                    frame.triggerReadyToSend();
+                } else {
+                    surface.triggerReadyToSend();
+                }
                 NDC.pop();
                 deactivated[0] = false;
                 break;
@@ -603,7 +572,7 @@ public class Rdp {
                 // all the others should be this
                 NDC.push("processData");
 
-                disc = this.processData(data, ext_disc_reason);
+                disconnect = this.processData(data, ext_disc_reason);
                 NDC.pop();
                 break;
 
@@ -615,7 +584,7 @@ public class Rdp {
                         + type[0]);
             }
 
-            if (disc)
+            if (disconnect || ! isConnected())
                 return;
         }
         return;
@@ -651,7 +620,7 @@ public class Rdp {
 
         RdpPacket_Localised data;
 
-        if (!Options.use_rdp5 || 1 == Options.server_rdp_version) {
+        if (!option.shouldUseRdp5() || 1 == option.getServerRdpVersion()) {
             logger.debug("Sending RDP4-style Logon packet");
 
             data = SecureLayer.init(sec_flags, 18 + domainlen + userlen
@@ -805,7 +774,7 @@ public class Rdp {
             data.setLittleEndian32(0); // out_uint32(s, 0);
             data.setLittleEndian32(0xffffffc4); // out_uint32_le(s, 0xffffffc4);
             data.setLittleEndian32(0xfffffffe); // out_uint32_le(s, 0xfffffffe);
-            data.setLittleEndian32(Options.rdp5_performanceflags); // out_uint32_le(s,
+            data.setLittleEndian32(option.getRdp5PerformanceFlags()); // out_uint32_le(s,
                                                                     // 0x0f);
             data.setLittleEndian32(0); // out_uint32(s, 0);
         }
@@ -896,7 +865,7 @@ public class Rdp {
             break;
         case (Rdp.RDP_DATA_PDU_LOGON):
             logger.debug("User logged on");
-            Rdesktop.loggedon = true;
+            isUserLoggedOn = true;
             break;
         case RDP_DATA_PDU_DISCONNECT:
             /*
@@ -926,7 +895,7 @@ public class Rdp {
             data.incrementPosition(2); // pad
             int n_orders = data.getLittleEndian16();
             data.incrementPosition(2); // pad
-            this.orders.processOrders(data, next_packet, n_orders);
+            this.orders.processOrders(data, next_packet, n_orders, option);
             break;
         case (Rdp.RDP_UPDATE_BITMAP):
             this.processBitmapUpdates(data);
@@ -951,7 +920,7 @@ public class Rdp {
                                                                 // Purpose
                                                                 // unknown
 
-        int sec_flags = Options.encryption ? (RDP5_FLAG | Secure.SEC_ENCRYPT)
+        int sec_flags = option.isEncryptionEnabled() ? (RDP5_FLAG | Secure.SEC_ENCRYPT)
                 : RDP5_FLAG;
 
         RdpPacket_Localised data = SecureLayer.init(sec_flags, 6 + 14 + caplen
@@ -962,7 +931,7 @@ public class Rdp {
 
         data.setLittleEndian16(2 + 14 + caplen + RDP_SOURCE.length);
         data.setLittleEndian16((RDP_PDU_CONFIRM_ACTIVE | 0x10));
-        data.setLittleEndian16(Common.mcs.getUserID() /* McsUserID() */+ 1001);
+        data.setLittleEndian16(this.SecureLayer.getUserID() /* McsUserID() */+ 1001);
 
         data.setLittleEndian32(this.rdp_shareid);
         data.setLittleEndian16(0x3ea); // user id
@@ -980,7 +949,7 @@ public class Rdp {
         this.sendBitmapCaps(data);
         this.sendOrderCaps(data);
 
-        if (Options.use_rdp5 && Options.persistent_bitmap_caching) {
+        if (option.shouldUseRdp5() && option.isPersistentBitmapCachingEnabled()) {
             logger.info("Persistent caching enabled");
             this.sendBitmapcache2Caps(data);
         } else
@@ -1011,7 +980,7 @@ public class Rdp {
         data.markEnd();
         logger.debug("confirm active");
         // this.send(data, RDP_PDU_CONFIRM_ACTIVE);
-        Common.secure.send(data, sec_flags);
+        this.SecureLayer.send(data, sec_flags);
     }
 
     private void sendGeneralCaps(RdpPacket_Localised data) {
@@ -1022,7 +991,7 @@ public class Rdp {
         data.setLittleEndian16(1); /* OS major type */
         data.setLittleEndian16(3); /* OS minor type */
         data.setLittleEndian16(0x200); /* Protocol version */
-        data.setLittleEndian16(Options.use_rdp5 ? 0x40d : 0);
+        data.setLittleEndian16(option.shouldUseRdp5() ? 0x40d : 0);
         // data.setLittleEndian16(Options.use_rdp5 ? 0x1d04 : 0); // this seems
         /*
          * Pad, according to T.128. 0x40d seems to trigger the server to start
@@ -1043,15 +1012,15 @@ public class Rdp {
         data.setLittleEndian16(RDP_CAPSET_BITMAP);
         data.setLittleEndian16(RDP_CAPLEN_BITMAP);
 
-        data.setLittleEndian16(Options.server_bpp); /* Preferred BPP */
+        data.setLittleEndian16(option.getServerDisplayColourDepthInBits()); /* Preferred BPP */
         data.setLittleEndian16(1); /* Receive 1 BPP */
         data.setLittleEndian16(1); /* Receive 4 BPP */
         data.setLittleEndian16(1); /* Receive 8 BPP */
-        data.setLittleEndian16(Options.width); /* Desktop width */
-        data.setLittleEndian16(Options.height); /* Desktop height */
+        data.setLittleEndian16(option.getWidth()); /* Desktop width */
+        data.setLittleEndian16(option.getHeight()); /* Desktop height */
         data.setLittleEndian16(0); /* Pad */
         data.setLittleEndian16(1); /* Allow resize */
-        data.setLittleEndian16(Options.bitmap_compression ? 1 : 0); /*
+        data.setLittleEndian16(option.isBitmapCompressionEnabled() ? 1 : 0); /*
                                                                      * Support
                                                                      * compression
                                                                      */
@@ -1066,7 +1035,7 @@ public class Rdp {
         order_caps[0] = 1; /* dest blt */
         order_caps[1] = 1; /* pat blt */// nb no rectangle orders if this is 0
         order_caps[2] = 1; /* screen blt */
-        order_caps[3] = (byte) (Options.bitmap_caching ? 1 : 0); /* memblt */
+        order_caps[3] = (byte) (option.isBitmapCachingEnabled() ? 1 : 0); /* memblt */
         order_caps[4] = 0; /* triblt */
         order_caps[8] = 1; /* line */
         order_caps[9] = 1; /* line */
@@ -1074,11 +1043,11 @@ public class Rdp {
         order_caps[11] = (Constants.desktop_save ? 1 : 0); /* desksave */
         order_caps[13] = 1; /* memblt */
         order_caps[14] = 1; /* triblt */
-        order_caps[20] = (byte) (Options.polygon_ellipse_orders ? 1 : 0); /* polygon */
-        order_caps[21] = (byte) (Options.polygon_ellipse_orders ? 1 : 0); /* polygon2 */
+        order_caps[20] = (byte) (option.isPolygonEllipseOrdersEnabled() ? 1 : 0); /* polygon */
+        order_caps[21] = (byte) (option.isPolygonEllipseOrdersEnabled() ? 1 : 0); /* polygon2 */
         order_caps[22] = 1; /* polyline */
-        order_caps[25] = (byte) (Options.polygon_ellipse_orders ? 1 : 0); /* ellipse */
-        order_caps[26] = (byte) (Options.polygon_ellipse_orders ? 1 : 0); /* ellipse2 */
+        order_caps[25] = (byte) (option.isPolygonEllipseOrdersEnabled() ? 1 : 0); /* ellipse */
+        order_caps[26] = (byte) (option.isPolygonEllipseOrdersEnabled() ? 1 : 0); /* ellipse2 */
         order_caps[27] = 1; /* text2 */
         data.setLittleEndian16(RDP_CAPSET_ORDER);
         data.setLittleEndian16(RDP_CAPLEN_ORDER);
@@ -1127,7 +1096,7 @@ public class Rdp {
         data.setLittleEndian16(RDP_CAPLEN_BMPCACHE2); // out_uint16_le(s,
                                                         // RDP_CAPLEN_BMPCACHE2);
 
-        data.setLittleEndian16(Options.persistent_bitmap_caching ? 2 : 0); /* version */
+        data.setLittleEndian16(option.isPersistentBitmapCachingEnabled() ? 2 : 0); /* version */
 
         data.setBigEndian16(3); /* number of caches in this set */
 
@@ -1141,7 +1110,7 @@ public class Rdp {
         // (BMPCACHE2_NUM_PSTCELLS | BMPCACHE2_FLAG_PERSIST) :
         // BMPCACHE2_C2_CELLS);
 
-        if (PstCache.pstcache_init(2)) {
+        if (PstCache.pstcache_init(2, option)) {
             logger.info("Persistent cache initialized");
             data.setLittleEndian32(BMPCACHE2_NUM_PSTCELLS
                     | BMPCACHE2_FLAG_PERSIST);
@@ -1245,7 +1214,8 @@ public class Rdp {
         try {
             data = this.initData(16);
         } catch (RdesktopException e) {
-            Rdesktop.error(e, this, frame, false);
+            if (isConnected()) this.disconnect();
+            Rdesktop.error(e, frame, false, option);
         }
 
         data.setLittleEndian16(1); /* number of events */
@@ -1264,18 +1234,17 @@ public class Rdp {
         try {
             this.sendData(data, RDP_DATA_PDU_INPUT);
         } catch (RdesktopException r) {
-            if (Common.rdp.isConnected())
-                Rdesktop.error(r, Common.rdp, Common.frame, true);
-            Common.exit();
+           reportErrorAndExit(r);
         } catch (CryptoException c) {
-            if (Common.rdp.isConnected())
-                Rdesktop.error(c, Common.rdp, Common.frame, true);
-            Common.exit();
+            reportErrorAndExit(c);
         } catch (IOException i) {
-            if (Common.rdp.isConnected())
-                Rdesktop.error(i, Common.rdp, Common.frame, true);
-            Common.exit();
+            reportErrorAndExit(i);
         }
+    }
+
+    private void reportErrorAndExit(Exception exception) {
+        if (isConnected()) this.disconnect();
+        Rdesktop.error(exception, frame, true, option);
     }
 
     private void sendFonts(int seq) throws RdesktopException, IOException,
@@ -1389,10 +1358,10 @@ public class Rdp {
                 maxY = bottom;
 
             /* Server may limit bpp - this is how we find out */
-            if (Options.server_bpp != bitsperpixel) {
+            if (option.getServerDisplayColourDepthInBits() != bitsperpixel) {
                 logger.warn("Server limited colour depth to " + bitsperpixel
                         + " bits");
-                Options.set_bpp(bitsperpixel);
+                option.setBPPImpl(bitsperpixel);
             }
 
             if (compression == 0) {
@@ -1405,7 +1374,7 @@ public class Rdp {
                     data.incrementPosition(width * Bpp);
                 }
 
-                surface.displayImage(Bitmap.convertImage(pixel, Bpp), width,
+                surface.displayImage(Bitmap.convertImage(pixel, Bpp, option), width,
                         height, left, top, cx, cy);
                 continue;
             }
@@ -1424,23 +1393,23 @@ public class Rdp {
             if (Bpp == 1) {
                 pixel = Bitmap.decompress(width, height, size, data, Bpp);
                 if (pixel != null)
-                    surface.displayImage(Bitmap.convertImage(pixel, Bpp),
+                    surface.displayImage(Bitmap.convertImage(pixel, Bpp, option),
                             width, height, left, top, cx, cy);
                 else
                     logger.warn("Could not decompress bitmap");
             } else {
 
-                if (Options.bitmap_decompression_store == Options.INTEGER_BITMAP_DECOMPRESSION) {
+                if (option.getBitmapDecompressionStore() == Options.INTEGER_BITMAP_DECOMPRESSION) {
                     int[] pixeli = Bitmap.decompressInt(width, height, size,
-                            data, Bpp);
+                            data, Bpp, option);
                     if (pixeli != null)
                         surface.displayImage(pixeli, width, height, left, top,
                                 cx, cy);
                     else
                         logger.warn("Could not decompress bitmap");
-                } else if (Options.bitmap_decompression_store == Options.BUFFEREDIMAGE_BITMAP_DECOMPRESSION) {
+                } else if (option.BUFFEREDIMAGE_BITMAP_DECOMPRESSION == option.getBitmapDecompressionStore()) {
                     Image pix = Bitmap.decompressImg(width, height, size, data,
-                            Bpp, null);
+                            Bpp, null, option);
                     if (pix != null)
                         surface.displayImage(pix, left, top);
                     else
@@ -1488,6 +1457,23 @@ public class Rdp {
         RdesktopCanvas ds = fr.getCanvas();
         this.surface = ds;
         orders.registerDrawingSurface(ds);
+        fr.registerCommLayer(this);
+    }
+
+     public void registerDrawingSurface(RdesktopCanvas canvas) {
+         this.frame = null;
+        this.surface = canvas;
+        orders.registerDrawingSurface(canvas);
+        canvas.registerCommLayer(this);
+
+    }
+
+    public boolean isNotReadyToSendData() {
+        return ! isReadyToSendData;
+    }
+
+    public boolean isReadyToSendData() {
+        return isReadyToSendData;
     }
 
     /* Process a null system pointer PDU */
@@ -1531,5 +1517,138 @@ public class Rdp {
         int cache_idx = data.getLittleEndian16();
         // logger.info("Setting cursor "+cache_idx);
         surface.setCursor(cache.getCursor(cache_idx));
+    }
+
+    /**
+     * Connect to a server
+     * @param server Server to connect to
+     * @param flags Flags defining logon type
+     * @throws ConnectionException
+     */
+    public void connect(InetAddress server, int flags) throws ConnectionException {
+
+       String username = option.getUsernameImpl();
+       String domain = option.getDomain();
+       String password = option.getPassword();
+       String command = option.getCommand();
+       String directory = option.getDirectory();
+        try {
+            SecureLayer.connect(server, this);
+            this.connected = true;
+            this.sendLogonInfo(flags, domain, username, password, command,
+                    directory);
+        } catch (UnknownHostException e) {
+           // Handle an unresolvable hostname
+            throw new ConnectionException("Could not resolve host name: "
+                    + server);
+        } catch (ConnectException e) {
+            // Handle a refused connection
+            throw new ConnectionException(
+                    "Connection refused when trying to connect to " + server
+                            + " on port " + option.getPort());
+        } catch (NoRouteToHostException e) {
+            // Handle a timeout on connecting
+            throw new ConnectionException(
+                    "Connection timed out when attempting to connect to "
+                            + server);
+        } catch (IOException e) {
+            throw new ConnectionException("Connection Failed" + e.getMessage());
+        } catch (RdesktopException e) {
+            throw new ConnectionException(e.getMessage());
+        } catch (OrderException e) {
+            throw new ConnectionException(e.getMessage());
+        } catch (CryptoException e) {
+            throw new ConnectionException(e.getMessage());
+        }
+
+    }
+
+    /**
+     * Process an RDP5 packet
+     *
+     * @param s
+     *            Packet to be processed
+     * @param e
+     *            True if packet is encrypted
+     * @param option
+     * @throws com.elusiva.rdp.RdesktopException
+     * @throws com.elusiva.rdp.OrderException
+     * @throws com.elusiva.rdp.crypto.CryptoException
+     */
+    public void rdp5_process(RdpPacket_Localised s, boolean e, Options option)
+            throws RdesktopException, OrderException, CryptoException {
+        rdp5_process(s, e, false, option);
+    }
+
+    /**
+     * Process an RDP5 packet
+     *
+     * @param s
+     *            Packet to be processed
+     * @param encryption
+     *            True if packet is encrypted
+     * @param shortform
+     *            True if packet is of the "short" form
+     * @param option
+     * @throws com.elusiva.rdp.RdesktopException
+     * @throws com.elusiva.rdp.OrderException
+     * @throws com.elusiva.rdp.crypto.CryptoException
+     */
+    public void rdp5_process(RdpPacket_Localised s, boolean encryption,
+                             boolean shortform, Options option) throws RdesktopException, OrderException,
+            CryptoException {
+        logger.debug("Processing RDP 5 order");
+
+        int length, count;
+        int type;
+        int next;
+
+        if (encryption) {
+            s.incrementPosition(shortform ? 6 : 7 /* XXX HACK */); /* signature */
+            byte[] data = new byte[s.size() - s.getPosition()];
+            s.copyToByteArray(data, 0, s.getPosition(), data.length);
+            byte[] packet = SecureLayer.decrypt(data);
+        }
+
+        // printf("RDP5 data:\n");
+        // hexdump(s->p, s->end - s->p);
+
+        while (s.getPosition() < s.getEnd()) {
+            type = s.get8();
+            length = s.getLittleEndian16();
+            /* next_packet = */next = s.getPosition() + length;
+            logger.debug("RDP5: type = " + type);
+            switch (type) {
+            case 0: /* orders */
+                count = s.getLittleEndian16();
+                orders.processOrders(s, next, count, option);
+                break;
+            case 1: /* bitmap update (???) */
+                s.incrementPosition(2); /* part length */
+                processBitmapUpdates(s);
+                break;
+            case 2: /* palette */
+                s.incrementPosition(2);
+                processPalette(s);
+                break;
+            case 3: /* probably an palette with offset 3. Weird */
+                break;
+            case 5:
+                process_null_system_pointer_pdu(s);
+                break;
+            case 6: // default pointer
+                break;
+            case 9:
+                process_colour_pointer_pdu(s);
+                break;
+            case 10:
+                process_cached_pointer_pdu(s);
+                break;
+            default:
+                logger.warn("Unimplemented RDP5 opcode " + type);
+            }
+
+            s.setPosition(next);
+        }
     }
 }

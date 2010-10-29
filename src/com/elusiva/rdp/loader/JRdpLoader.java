@@ -16,11 +16,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.StringTokenizer;
 
-import com.elusiva.rdp.Common;
-import com.elusiva.rdp.OrderException;
-import com.elusiva.rdp.Rdesktop;
-import com.elusiva.rdp.RdesktopException;
-import com.elusiva.rdp.Utilities_Localised;
+import com.elusiva.rdp.*;
 
 public class JRdpLoader {
 
@@ -88,15 +84,13 @@ public class JRdpLoader {
                 //String[] finArgs = outArgs.split(" ");
                 String[] finArgs = Utilities_Localised.split(outArgs, " ");
                 
-                Rdesktop.main(finArgs);
+                Rdesktop.main(finArgs, null);
 				in.close();
 			}else{ System.err.println("No server name provided"); System.exit(0); }
 			
         
 		}
 		catch(IOException ioe){ System.err.println("Launch file could not be read: " + ioe.getMessage()); System.exit(-1); } 
-		catch (OrderException e) { e.printStackTrace(); System.exit(-1); } 
-		catch (RdesktopException e) { e.printStackTrace(); System.exit(-1);	}
 		catch(Exception e){ e.printStackTrace(); System.exit(-1); }
 	}
 	

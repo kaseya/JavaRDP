@@ -192,14 +192,22 @@ public class SendEvent extends JFrame {
 			jButton.setText("Send Event");
 			jButton.addActionListener(new java.awt.event.ActionListener() { 
 				public void actionPerformed(java.awt.event.ActionEvent e) {    
-					if(rdp != null){
-						rdp.sendInput(Input.getTime(),Integer.decode(inputTypeField.getText()).intValue(),Integer.decode(flagsField.getText()).intValue(),Integer.decode(param1Field.getText()).intValue(),Integer.decode(param2Field.getText()).intValue());
+					if(rdp != null && ! areFieldsEmpty()){
+						rdp.sendInput(Input.getTime(),
+                                Integer.decode(inputTypeField.getText()), 
+                                Integer.decode(flagsField.getText()),
+                                Integer.decode(param1Field.getText()),
+                                Integer.decode(param2Field.getText()));
 					}
 				}
 			});
 		}
 		return jButton;
 	}
+
+    private boolean areFieldsEmpty() {
+        return inputTypeField.getText().isEmpty() || flagsField.getText().isEmpty() || param1Field.getText().isEmpty() || param2Field.getText().isEmpty();
+    }
 	/**
 	 * This method initializes flagMaskField	
 	 * 	
@@ -223,7 +231,9 @@ public class SendEvent extends JFrame {
 			jButton1.addActionListener(new java.awt.event.ActionListener() { 
 				public void actionPerformed(java.awt.event.ActionEvent e) {    
 					// apply the mask to the flags field
-					flagsField.setText("0x" + Integer.toHexString(Integer.decode(flagsField.getText()).intValue() | Integer.decode(flagMaskField.getText()).intValue()));
+                    if ( ! flagsField.getText().isEmpty() && ! flagMaskField.getText().isEmpty()) {
+					    flagsField.setText("0x" + Integer.toHexString(Integer.decode(flagsField.getText()) | Integer.decode(flagMaskField.getText())));
+                    }
 					flagMaskField.setText("");
 				}
 			});

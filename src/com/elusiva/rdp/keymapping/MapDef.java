@@ -64,7 +64,7 @@ public class MapDef {
 	  /**
 	   * Constructor for a keycode-defined mapping definition
 	   * 
-	   * @param keyChar
+	   * @param keyCode
 	   * @param keyLocation
 	   * @param scancode
 	   * @param ctrlDown
@@ -169,11 +169,11 @@ public class MapDef {
 	  }
 
 	  
-	  protected boolean appliesToTyped(KeyEvent e, boolean capslock){
+	  protected boolean appliesToTyped(KeyEvent e, boolean capslock, Options option){
 	  	
 	  	if(Constants.OS == Constants.MAC){
 	  		// Remap the hash key to §
-	  		if(Options.remap_hash && (e.getKeyChar() == '§')){
+	  		if(option.isRemapHashEnabled() && (e.getKeyChar() == '§')){
 	  			return ((characterDef) && (this.keyChar == '#'));
 	  		}
 	  		

@@ -47,14 +47,20 @@ public class MCS {
     private static final int SDIN = 26;		/* Send Data Indication */
 
     private VChannels channels;
+    private Options option;
+    private Secure secureChannel;
 
     /**
      * Initialise the MCS layer (and lower layers) with provided channels
      * @param channels Set of available MCS channels
+     * @param option
+     * @param secureChannel
      */
-    public MCS(VChannels channels) {
+    public MCS(VChannels channels, Options option, Secure secureChannel) {
         this.channels = channels;
     	IsoLayer = new ISO_Localised();
+        this.option = option;
+        this.secureChannel = secureChannel;
     }
     
     /**
@@ -62,33 +68,34 @@ public class MCS {
      * @param host Address of server
      * @param port Port to connect to on server
      * @param data Packet to use for sending connection data
+     * @param rdpLayer
      * @throws IOException
      * @throws RdesktopException
      * @throws OrderException
      * @throws CryptoException
      */
-    public void connect(InetAddress host, int port, RdpPacket_Localised data)  throws IOException, RdesktopException, OrderException, CryptoException {
+    public void connect(InetAddress host, int port, RdpPacket_Localised data, Rdp rdpLayer)  throws IOException, RdesktopException, OrderException, CryptoException {
 	logger.debug("MCS.connect");
-    IsoLayer.connect(host, port);
+    IsoLayer.connect(host, port, option, rdpLayer);
 
     this.sendConnectInitial(data);
-	this.receiveConnectResponse(data);
+	this.receiveConnectResponse(data, rdpLayer);
 
     logger.debug("connect response received");
     
 	send_edrq();
 	send_aurq();
 
-	this.McsUserID=receive_aucf();
+	this.McsUserID=receive_aucf(rdpLayer);
 	send_cjrq(this.McsUserID+MCS_USERCHANNEL_BASE);
-	receive_cjcf();
+	receive_cjcf(rdpLayer);
 	send_cjrq(MCS_GLOBAL_CHANNEL);
-	receive_cjcf();
+	receive_cjcf(rdpLayer);
 	
 	for (int i = 0; i < channels.num_channels(); i++)
 	{
 		send_cjrq(channels.mcs_id(i));
-		receive_cjcf();
+		receive_cjcf(rdpLayer);
 	}
 
     }
@@ -148,22 +155,23 @@ public class MCS {
 	buffer.setBigEndian16(channel);
 	buffer.set8(0x70); //Flags
 	buffer.setBigEndian16(length);
-	IsoLayer.send(buffer);
+	IsoLayer.send(buffer, option);
     }
 
     /**
      * Receive an MCS PDU from the next channel with available data
      * @param channel ID of channel will be stored in channel[0]
+     * @param rdpLayer
      * @return Received packet
      * @throws IOException
      * @throws RdesktopException
      * @throws OrderException
      * @throws CryptoException
      */
-    public RdpPacket_Localised receive(int[] channel) throws IOException, RdesktopException, OrderException, CryptoException {
+    public RdpPacket_Localised receive(int[] channel, Rdp rdpLayer) throws IOException, RdesktopException, OrderException, CryptoException {
     	logger.debug("receive");
     	int opcode=0, appid=0, length=0;
-	RdpPacket_Localised buffer=IsoLayer.receive();
+	RdpPacket_Localised buffer=IsoLayer.receive(option, rdpLayer);
 	if(buffer==null) return null;
 	buffer.setHeader(RdpPacket_Localised.MCS_HEADER);
 	opcode = buffer.get8();
@@ -349,7 +357,7 @@ public class MCS {
         data.copyToPacket(buffer, 0, buffer.getPosition(), data.getEnd());
         buffer.incrementPosition(data.getEnd());
         buffer.markEnd();
-        IsoLayer.send(buffer);
+        IsoLayer.send(buffer, option);
         return;
     }
         
@@ -382,18 +390,19 @@ public class MCS {
 	data.copyToPacket(buffer, 0, buffer.getPosition(), data.getEnd());
 	buffer.incrementPosition(data.getEnd());
 	buffer.markEnd();
-	IsoLayer.send(buffer);
+	IsoLayer.send(buffer, option);
     }
 
     /**
      * Receive and handle a connect response from the server
      * @param data Packet containing response data
+     * @param rdpLayer
      * @throws IOException
      * @throws RdesktopException
      * @throws OrderException
      * @throws CryptoException
      */
-    public void receiveConnectResponse(RdpPacket_Localised data) throws IOException, RdesktopException, OrderException, CryptoException {
+    public void receiveConnectResponse(RdpPacket_Localised data, Rdp rdpLayer) throws IOException, RdesktopException, OrderException, CryptoException {
         
         
         logger.debug("MCS.receiveConnectResponse");   
@@ -420,7 +429,7 @@ public class MCS {
     int result=0;
 	int length=0;
 	
-	RdpPacket_Localised buffer = IsoLayer.receive();
+	RdpPacket_Localised buffer = IsoLayer.receive(option, rdpLayer);
     logger.debug("Received buffer"); 
 	length=berParseHeader(buffer, CONNECT_RESPONSE);
 	length=berParseHeader(buffer, BER_TAG_RESULT);
@@ -434,7 +443,7 @@ public class MCS {
 	parseDomainParams(buffer);
 	length=berParseHeader(buffer, BER_TAG_OCTET_STRING);
 	
-	Common.secure.processMcsData(buffer);
+	secureChannel.processMcsData(buffer);
 	
 	/*
 	if (length > data.size()) {
@@ -464,7 +473,7 @@ public class MCS {
 	buffer.setBigEndian16(1); //height
 	buffer.setBigEndian16(1); //interval
 	buffer.markEnd();
-	IsoLayer.send(buffer);
+	IsoLayer.send(buffer, option);
     }
     
     /**
@@ -479,7 +488,7 @@ public class MCS {
 	buffer.setBigEndian16(this.McsUserID); //height
 	buffer.setBigEndian16(channelid); //interval
 	buffer.markEnd();
-	IsoLayer.send(buffer);
+	IsoLayer.send(buffer, option);
     }
 
     /**
@@ -493,7 +502,7 @@ public class MCS {
 	buffer.set8(AUCF << 2);
 	buffer.set8(0);
 	buffer.markEnd();
-	IsoLayer.send(buffer);
+	IsoLayer.send(buffer, option);
     }
 
     /**
@@ -506,18 +515,19 @@ public class MCS {
 
 	buffer.set8(AURQ <<2);
 	buffer.markEnd();
-	IsoLayer.send(buffer);
+	IsoLayer.send(buffer, option);
     }
 
     /**
      * Receive and handle a CJcf message
      * @throws IOException
      * @throws RdesktopException
+     * @param rdpLayer
      */
-    public void receive_cjcf() throws IOException, RdesktopException, OrderException, CryptoException {
+    public void receive_cjcf(Rdp rdpLayer) throws IOException, RdesktopException, OrderException, CryptoException {
     	logger.debug("receive_cjcf");
     int opcode=0, result=0;
-	RdpPacket_Localised buffer = IsoLayer.receive();
+	RdpPacket_Localised buffer = IsoLayer.receive(option, rdpLayer);
 	
 	opcode=buffer.get8();
 	if ((opcode >>2) != CJCF) {
@@ -547,11 +557,12 @@ public class MCS {
      * @throws RdesktopException
      * @throws OrderException
      * @throws CryptoException
+     * @param rdpLayer
      */
-    public int receive_aucf() throws IOException, RdesktopException, OrderException, CryptoException {
+    public int receive_aucf(Rdp rdpLayer) throws IOException, RdesktopException, OrderException, CryptoException {
 	logger.debug("receive_aucf");
     int opcode=0, result=0, UserID=0;
-	RdpPacket_Localised buffer = IsoLayer.receive();
+	RdpPacket_Localised buffer = IsoLayer.receive(option, rdpLayer);
 	
 	opcode=buffer.get8();
 	if ((opcode >>2) != AUCF) {

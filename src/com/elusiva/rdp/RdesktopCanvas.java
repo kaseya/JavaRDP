@@ -83,6 +83,7 @@ public abstract class RdesktopCanvas extends Canvas {
     private int bottom = 0;
 
     private Dimension dimension;
+    protected Options option;
 
     /**
      * Initialise this canvas to specified width and height, also initialise
@@ -91,9 +92,9 @@ public abstract class RdesktopCanvas extends Canvas {
      * @param width
      *            Desired width of canvas
      * @param height
-     *            Desired height of canvas
+     * @param option
      */
-    public RdesktopCanvas(int width, int height) {
+    public RdesktopCanvas(int width, int height, Options option) {
         super();
         rop = new RasterOp();
         this.width = width;
@@ -107,8 +108,9 @@ public abstract class RdesktopCanvas extends Canvas {
         // via getMinimumSize() and getPreferredSize(). Calling setSize() from
         // constructor is considered as a wrong praktice.
         //setSize(width, height);
-
+        logger.info("Canvas width and height" + width + " " + height);
         backstore = new WrappedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        this.option = option;
 
         // now do input listeners in registerCommLayer() / registerKeyboard()
     }
@@ -149,7 +151,7 @@ public abstract class RdesktopCanvas extends Canvas {
     public void registerCommLayer(Rdp rdp) {
         this.rdp = rdp;
         if (fbKeys != null)
-            input = new Input_Localised(this, rdp, fbKeys);
+            input = new Input_Localised(this, rdp, fbKeys, option);
 
     }
 
@@ -161,7 +163,7 @@ public abstract class RdesktopCanvas extends Canvas {
         this.fbKeys = keys;
         if (rdp != null) {
             // rdp and keys have been registered...
-            input = new Input_Localised(this, rdp, keys);
+            input = new Input_Localised(this, rdp, keys, option);
         }
     }
 
@@ -203,7 +205,7 @@ public abstract class RdesktopCanvas extends Canvas {
             int size, RdpPacket_Localised data, int Bpp, IndexColorModel cm)
             throws RdesktopException {
         backstore = Bitmap.decompressImgDirect(width, height, size, data, Bpp,
-                cm, x, y, backstore);
+                cm, x, y, backstore, option);
     }
 
     /**
@@ -372,10 +374,10 @@ public abstract class RdesktopCanvas extends Canvas {
         if (x > this.right || y > this.bottom)
             return; // off screen
 
-        int Bpp = Options.Bpp;
+        int Bpp = option.getColourDepthInBytes();
 
         // convert to 24-bit colour
-        color = Bitmap.convertTo24(color);
+        color = Bitmap.convertTo24(color, option);
 
         // correction for 24-bit colour
         if (Bpp == 3)
@@ -430,7 +432,7 @@ public abstract class RdesktopCanvas extends Canvas {
      */
     public void drawLine(int x1, int y1, int x2, int y2, int color, int opcode) {
         // convert to 24-bit colour
-        color = Bitmap.convertTo24(color);
+        color = Bitmap.convertTo24(color, option);
 
         if (x1 == x2 || y1 == y2) {
             drawLineVerticalHorizontal(x1, y1, x2, y2, color, opcode);
@@ -529,7 +531,7 @@ public abstract class RdesktopCanvas extends Canvas {
                         x2 = this.right;
                     pbackstore = y1 * this.width + x1;
                     for (i = 0; i < x2 - x1; i++) {
-                        rop.do_pixel(opcode, backstore, x1 + i, y1, color);
+                        rop.do_pixel(opcode, backstore, x1 + i, y1, color, option);
                         pbackstore++;
                     }
                     repaint(x1, y1, x2 - x1 + 1, 1);
@@ -540,7 +542,7 @@ public abstract class RdesktopCanvas extends Canvas {
                         x1 = this.right;
                     pbackstore = y1 * this.width + x1;
                     for (i = 0; i < x1 - x2; i++) {
-                        rop.do_pixel(opcode, backstore, x2 + i, y1, color);
+                        rop.do_pixel(opcode, backstore, x2 + i, y1, color, option);
                         pbackstore--;
                     }
                     repaint(x2, y1, x1 - x2 + 1, 1);
@@ -555,7 +557,7 @@ public abstract class RdesktopCanvas extends Canvas {
                         y2 = this.bottom;
                     pbackstore = y1 * this.width + x1;
                     for (i = 0; i < y2 - y1; i++) {
-                        rop.do_pixel(opcode, backstore, x1, y1 + i, color);
+                        rop.do_pixel(opcode, backstore, x1, y1 + i, color, option);
                         pbackstore += this.width;
                     }
                     repaint(x1, y1, 1, y2 - y1 + 1);
@@ -566,7 +568,7 @@ public abstract class RdesktopCanvas extends Canvas {
                         y1 = this.bottom;
                     pbackstore = y1 * this.width + x1;
                     for (i = 0; i < y1 - y2; i++) {
-                        rop.do_pixel(opcode, backstore, x1, y2 + i, color);
+                        rop.do_pixel(opcode, backstore, x1, y2 + i, color, option);
                         pbackstore -= this.width;
                     }
                     repaint(x1, y2, 1, y1 - y2 + 1);
@@ -626,7 +628,7 @@ public abstract class RdesktopCanvas extends Canvas {
         cy = clipbottom - y + 1;
 
         rop.do_array(destblt.getOpcode(), backstore, this.width, x, y, cx, cy,
-                null, 0, 0, 0);
+                null, 0, 0, 0, option);
         this.repaint(x, y, cx, cy);
 
     }
@@ -667,7 +669,7 @@ public abstract class RdesktopCanvas extends Canvas {
         srcy += y - screenblt.getY();
 
         rop.do_array(screenblt.getOpcode(), backstore, this.width, x, y, cx,
-                cy, null, this.width, srcx, srcy);
+                cy, null, this.width, srcx, srcy, option);
         this.repaint(x, y, cx, cy);
 
     }
@@ -719,7 +721,7 @@ public abstract class RdesktopCanvas extends Canvas {
             // IndexColorModel cm = cache.get_colourmap(memblt.getColorTable());
             // should use the colormap, but requires high color backstore...
             rop.do_array(memblt.getOpcode(), backstore, this.width, x, y, cx,
-                    cy, bitmap.getBitmapData(), bitmap.getWidth(), srcx, srcy);
+                    cy, bitmap.getBitmapData(), bitmap.getWidth(), srcx, srcy, option);
 
             this.repaint(x, y, cx, cy);
         } catch (RdesktopException e) {
@@ -750,8 +752,8 @@ public abstract class RdesktopCanvas extends Canvas {
             int fgcolor, int bgcolor, Brush brush) {
 
         // convert to 24-bit colour
-        fgcolor = Bitmap.convertTo24(fgcolor);
-        bgcolor = Bitmap.convertTo24(bgcolor);
+        fgcolor = Bitmap.convertTo24(fgcolor, option);
+        bgcolor = Bitmap.convertTo24(bgcolor, option);
 
         // Perform standard clipping checks, x-axis
         int clipright = x + cx - 1;
@@ -779,7 +781,7 @@ public abstract class RdesktopCanvas extends Canvas {
             for (i = 0; i < src.length; i++)
                 src[i] = fgcolor;
             rop.do_array(opcode, backstore, this.width, x, y, cx, cy, src, cx,
-                    0, 0);
+                    0, 0, option);
             this.repaint(x, y, cx, cy);
 
             break;
@@ -812,7 +814,7 @@ public abstract class RdesktopCanvas extends Canvas {
                 }
             }
             rop.do_array(opcode, backstore, this.width, x, y, cx, cy, src, cx,
-                    0, 0);
+                    0, 0, option);
             this.repaint(x, y, cx, cy);
             break;
         default:
@@ -865,8 +867,8 @@ public abstract class RdesktopCanvas extends Canvas {
         Brush brush = triblt.getBrush();
 
         // convert to 24-bit colour
-        fgcolor = Bitmap.convertTo24(fgcolor);
-        bgcolor = Bitmap.convertTo24(bgcolor);
+        fgcolor = Bitmap.convertTo24(fgcolor, option);
+        bgcolor = Bitmap.convertTo24(bgcolor, option);
 
         // Perform standard clipping checks, x-axis
         int clipright = x + cx - 1;
@@ -890,18 +892,18 @@ public abstract class RdesktopCanvas extends Canvas {
             switch (triblt.getOpcode()) {
             case 0x69: // PDSxxn
                 rop.do_array(ROP2_XOR, backstore, this.width, x, y, cx, cy,
-                        bitmap.getBitmapData(), bitmap.getWidth(), srcx, srcy);
+                        bitmap.getBitmapData(), bitmap.getWidth(), srcx, srcy, option);
                 patBltOrder(ROP2_NXOR, x, y, cx, cy, fgcolor, bgcolor, brush);
                 break;
             case 0xb8: // PSDPxax
                 patBltOrder(ROP2_XOR, x, y, cx, cy, fgcolor, bgcolor, brush);
                 rop.do_array(ROP2_AND, backstore, this.width, x, y, cx, cy,
-                        bitmap.getBitmapData(), bitmap.getWidth(), srcx, srcy);
+                        bitmap.getBitmapData(), bitmap.getWidth(), srcx, srcy, option);
                 patBltOrder(ROP2_XOR, x, y, cx, cy, fgcolor, bgcolor, brush);
                 break;
             case 0xc0: // PSa
                 rop.do_array(ROP2_COPY, backstore, this.width, x, y, cx, cy,
-                        bitmap.getBitmapData(), bitmap.getWidth(), srcx, srcy);
+                        bitmap.getBitmapData(), bitmap.getWidth(), srcx, srcy, option);
                 patBltOrder(ROP2_AND, x, y, cx, cy, fgcolor, bgcolor, brush);
                 break;
 
@@ -910,7 +912,7 @@ public abstract class RdesktopCanvas extends Canvas {
                         .warn("Unimplemented Triblt opcode:"
                                 + triblt.getOpcode());
                 rop.do_array(ROP2_COPY, backstore, this.width, x, y, cx, cy,
-                        bitmap.getBitmapData(), bitmap.getWidth(), srcx, srcy);
+                        bitmap.getBitmapData(), bitmap.getWidth(), srcx, srcy, option);
             }
         } catch (RdesktopException e) {
         }
@@ -951,7 +953,7 @@ public abstract class RdesktopCanvas extends Canvas {
         int lines = polyline.getLines();
 
         // convert to 24-bit colour
-        fgcolor = Bitmap.convertTo24(fgcolor);
+        fgcolor = Bitmap.convertTo24(fgcolor, option);
 
         // hack - data as single element byte array so can pass by ref to
         // parse_delta
@@ -1005,7 +1007,7 @@ public abstract class RdesktopCanvas extends Canvas {
      * @param color Colour value to be used in operation
      */
     public void setPixel(int opcode, int x, int y, int color) {
-        int Bpp = Options.Bpp;
+        int Bpp = option.getColourDepthInBytes();
 
         // correction for 24-bit colour
         if (Bpp == 3)
@@ -1015,7 +1017,7 @@ public abstract class RdesktopCanvas extends Canvas {
         if ((x < this.left) || (x > this.right) || (y < this.top)
                 || (y > this.bottom)) { // Clip
         } else {
-            rop.do_pixel(opcode, backstore, x, y, color);
+            rop.do_pixel(opcode, backstore, x, y, color, option);
         }
     }
 
@@ -1039,11 +1041,11 @@ public abstract class RdesktopCanvas extends Canvas {
         int bytes_per_row = (cx - 1) / 8 + 1;
         int newx, newy, newcx, newcy;
 
-        int Bpp = Options.Bpp;
+        int Bpp = option.getColourDepthInBytes();
 
         // convert to 24-bit colour
-        fgcolor = Bitmap.convertTo24(fgcolor);
-        bgcolor = Bitmap.convertTo24(bgcolor);
+        fgcolor = Bitmap.convertTo24(fgcolor, option);
+        bgcolor = Bitmap.convertTo24(bgcolor, option);
 
         // correction for 24-bit colour
         if (Bpp == 3) {
@@ -1255,5 +1257,9 @@ public abstract class RdesktopCanvas extends Canvas {
      */
     public Input getInput() {
         return (input);
+    }
+
+    public void sendCtrlAltDel() {
+      getInput().sendCtrlAltDel();
     }
 }

@@ -12,23 +12,23 @@
  */
 package com.elusiva.rdp;
 
-import java.awt.datatransfer.DataFlavor;
-import java.util.StringTokenizer;
-
 import com.elusiva.rdp.rdp5.Rdp5;
+import com.elusiva.rdp.applet.RdpApplet;
 
 public class Common {
 
     public static boolean underApplet = false;
 	public static Rdp5 rdp;
-	public static Secure secure;
-	public static MCS mcs;
-	public static RdesktopFrame frame;
+	//public static Secure secure;
+    public static RdesktopFrame frame;
+    public static RdesktopCanvas_Localised canvas;
 
-    /**
-     * Quit the application
-     */
-	public static void exit(){
-		Rdesktop.exit(0,rdp,frame,true);
-	}
+
+    public static boolean isRunningAsApplication() {
+        return !underApplet;
+    }
+
+    public static boolean isRunningAsApplet() {
+        return underApplet;
+    }
 }

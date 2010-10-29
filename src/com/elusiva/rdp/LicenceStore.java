@@ -25,10 +25,10 @@ public abstract class LicenceStore {
 
     /**
      * Load a licence from a file
-     * @return Licence data stored in file
+     * @return Licence data stored in file  @param option
      */
-    public byte[] load_licence(){
-        String path = Options.licence_path + "/licence."+Options.hostname;
+    public byte[] load_licence(Options option){
+        String path = option.getLicencePath() + "/licence."+ option.getHostname();
         byte[] data = null;
         try{
             FileInputStream fd = new FileInputStream(path);
@@ -43,12 +43,13 @@ public abstract class LicenceStore {
     /**
      * Save a licence to file
      * @param databytes Licence data to store
+     * @param option
      */
-    public void save_licence(byte[] databytes){
+    public void save_licence(byte[] databytes, Options option){
         /* set and create the directory -- if it doesn't exist. */
         //String home = "/root"; 
-        String dirpath = Options.licence_path;//home+"/.rdesktop";
-        String filepath = dirpath +"/licence."+Options.hostname;
+        String dirpath = option.getLicencePath();//home+"/.rdesktop";
+        String filepath = dirpath +"/licence."+ option.getHostname();
         
         File file = new File(dirpath);
         file.mkdir();

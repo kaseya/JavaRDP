@@ -60,10 +60,10 @@ public class Licence {
 	private static final int LICENCE_TAG_HOST = 0x0010;	
 	
     
-	public byte[] generate_hwid() throws UnsupportedEncodingException{ 
+	public byte[] generate_hwid(Options option) throws UnsupportedEncodingException{
 	   byte[] hwid = new byte[LICENCE_HWID_SIZE];
 	   secure.setLittleEndian32(hwid, 2);
-		   byte[] name = Options.hostname.getBytes("US-ASCII");
+		   byte[] name = option.getHostname().getBytes("US-ASCII");
 
 		   if (name.length > LICENCE_HWID_SIZE-4) {
 			   System.arraycopy(name, 0, hwid, 4, LICENCE_HWID_SIZE-4);
@@ -76,11 +76,12 @@ public class Licence {
     /**
      * Process and handle licence data from a packet
      * @param data Packet containing licence data
+     * @param option
      * @throws RdesktopException
      * @throws IOException
      * @throws CryptoException
      */
-   public void process(RdpPacket_Localised data) throws RdesktopException, IOException, CryptoException {
+   public void process(RdpPacket_Localised data, Options option) throws RdesktopException, IOException, CryptoException {
 	   int tag = 0;
 	   tag = data.get8();
 	   data.incrementPosition(3); // version, length
@@ -88,15 +89,15 @@ public class Licence {
 	   switch(tag) {
 	    
 	   case (LICENCE_TAG_DEMAND):
-		   this.process_demand(data);
+		   this.process_demand(data, option);
 		   break;
 	    
 	   case (LICENCE_TAG_AUTHREQ):
-		   this.process_authreq(data);
+		   this.process_authreq(data, option);
 		   break;
 	    
 	   case (LICENCE_TAG_ISSUE):
-		   this.process_issue(data);
+		   this.process_issue(data, option);
 		   break;
 	
 	   case (LICENCE_TAG_REISSUE):
@@ -116,16 +117,17 @@ public class Licence {
        /**
         * Process a demand for a licence. Find a license and transmit to server, or request new licence
         * @param data Packet containing details of licence demand
+        * @param option
         * @throws UnsupportedEncodingException
         * @throws RdesktopException
         * @throws IOException
         * @throws CryptoException
         */
-	   public void process_demand(RdpPacket_Localised data) throws UnsupportedEncodingException, RdesktopException, IOException, CryptoException {
+	   public void process_demand(RdpPacket_Localised data, Options option) throws UnsupportedEncodingException, RdesktopException, IOException, CryptoException {
 	   byte[] null_data = new byte[Secure.SEC_MODULUS_SIZE];
 	   byte[] server_random = new byte[Secure.SEC_RANDOM_SIZE];
-	   byte[] host = Options.hostname.getBytes("US-ASCII");
-	   byte[] user = Options.username.getBytes("US-ASCII");
+	   byte[] host = option.getHostname().getBytes("US-ASCII");
+	   byte[] user = option.getUsernameImpl().getBytes("US-ASCII");
 
 	   /*retrieve the server random */
 	   data.copyToByteArray(server_random, 0, data.getPosition(), server_random.length);
@@ -134,12 +136,12 @@ public class Licence {
 	   /* Null client keys are currently used */
 	   this.generate_keys(null_data, server_random, null_data);
 
-	   if(!Options.built_in_licence && Options.load_licence){
-		   byte[] licence_data = load_licence();
+	   if(!option.isBuiltInLicence() && option.isLoadLicenceEnabled()){
+		   byte[] licence_data = load_licence(option);
 		   if ((licence_data != null) && (licence_data.length > 0)){
 			   logger.debug("licence_data.length = "+licence_data.length);
 			   /* Generate a signature for the HWID buffer */
-			   byte[] hwid = generate_hwid();
+			   byte[] hwid = generate_hwid(option);
 			   byte[] signature =  secure.sign(this.licence_sign_key, 16, 16, hwid, hwid.length);
 		
 			   /*now crypt the hwid */
@@ -155,7 +157,7 @@ public class Licence {
 			   return;
 		   } 
 	   }
-	   this.send_request(null_data, null_data, user, host);
+	   this.send_request(null_data, null_data, user, host, option);
 	   } 
        
     /**
@@ -281,12 +283,13 @@ public class Licence {
     /**
      * Process an authorisation request
      * @param data Packet containing request details
+     * @param option
      * @throws RdesktopException
      * @throws UnsupportedEncodingException
      * @throws IOException
      * @throws CryptoException
      */
-	public void process_authreq(RdpPacket_Localised data) throws RdesktopException,  UnsupportedEncodingException, IOException, CryptoException{
+	public void process_authreq(RdpPacket_Localised data, Options option) throws RdesktopException,  UnsupportedEncodingException, IOException, CryptoException{
 
 		byte[] out_token = new byte[LICENCE_TOKEN_SIZE];
 		byte[] decrypt_token = new byte[LICENCE_TOKEN_SIZE];
@@ -310,7 +313,7 @@ public class Licence {
 		rc4_licence.crypt(this.in_token, 0, LICENCE_TOKEN_SIZE, decrypt_token, 0);
 
 		/*construct HWID */
-		byte[] hwid = this.generate_hwid();
+		byte[] hwid = this.generate_hwid(option);
 	
 		/* generate signature for a buffer of token and HWId */
 		System.arraycopy(decrypt_token, 0, sealed_buffer, 0, LICENCE_TOKEN_SIZE);
@@ -334,9 +337,10 @@ public class Licence {
     /**
      * Handle a licence issued by the server, save to disk if Options.save_licence
      * @param data Packet containing issued licence
+     * @param option
      * @throws CryptoException
      */
-	public void process_issue(RdpPacket_Localised data)throws CryptoException {
+	public void process_issue(RdpPacket_Localised data, Options option)throws CryptoException {
 		int length = 0;
 		int check = 0;
 		RC4 rc4_licence = new RC4();
@@ -377,7 +381,7 @@ public class Licence {
 		
 		secure.licenceIssued = true;
 		logger.debug("Server issued Licence");
-		if(Options.save_licence) save_licence(data,length-2);
+		if(option.isSaveLicenceEnabled()) save_licence(data,length-2, option);
 		}
     
     /**
@@ -386,11 +390,12 @@ public class Licence {
      * @param rsa_data
      * @param username
      * @param hostname
+     * @param option
      * @throws RdesktopException
      * @throws IOException
      * @throws CryptoException
      */
-	public void send_request(byte[] client_random, byte[] rsa_data, byte[] username, byte[] hostname) throws RdesktopException, IOException, CryptoException {
+	public void send_request(byte[] client_random, byte[] rsa_data, byte[] username, byte[] hostname, Options option) throws RdesktopException, IOException, CryptoException {
 		int sec_flags = Secure.SEC_LICENCE_NEG;
 		int userlen = (username.length == 0 ? 0 : username.length+1);
 		int hostlen = (hostname.length == 0 ? 0 : hostname.length+1);
@@ -404,7 +409,7 @@ public class Licence {
 	
 		buffer.setLittleEndian32(1);
 		
-		if(Options.built_in_licence && (!Options.load_licence) && (!Options.save_licence)){
+		if(option.isBuiltInLicence() && (!option.isLoadLicenceEnabled()) && (!option.isSaveLicenceEnabled())){
 			logger.debug("Using built-in Windows Licence");
 			buffer.setLittleEndian32(0x03010000); 
 		}
@@ -449,19 +454,20 @@ public class Licence {
      * Load a licence from disk
      * @return Raw byte data for stored licence
 	 */
-	byte[] load_licence(){
+	byte[] load_licence(Options option){
 		logger.debug("load_licence");
 		//String home = "/root"; // getenv("HOME");
                
-		return (new LicenceStore_Localised()).load_licence();
+		return (new LicenceStore_Localised()).load_licence(option);
 	}
 
     /**
      * Save a licence to disk
      * @param data Packet containing licence data
      * @param length Length of licence
+     * @param option
      */
-void save_licence(RdpPacket_Localised data, int length){
+void save_licence(RdpPacket_Localised data, int length, Options option){
 	logger.debug("save_licence");
 	int len;
 	int startpos = data.getPosition();
@@ -488,7 +494,7 @@ void save_licence(RdpPacket_Localised data, int length){
     byte[] databytes = new byte[len];
     data.copyToByteArray(databytes,0,data.getPosition(),len);
     
-    new LicenceStore_Localised().save_licence(databytes);
+    new LicenceStore_Localised().save_licence(databytes, option);
     
 	/*
     String dirpath = Options.licence_path;//home+"/.rdesktop";

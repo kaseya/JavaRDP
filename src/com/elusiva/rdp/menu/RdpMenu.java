@@ -11,23 +11,19 @@
  */
 package com.elusiva.rdp.menu;
 
-import java.awt.Event;
+import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.awt.Menu;
-import java.awt.MenuBar;
-import java.awt.MenuItem;
 
-import com.elusiva.rdp.Common;
-import com.elusiva.rdp.Options;
 import com.elusiva.rdp.RdesktopFrame;
 import com.elusiva.rdp.RdesktopCanvas;
-import com.elusiva.rdp.Input;
+import com.elusiva.rdp.Rdesktop;
+
 
 public class RdpMenu extends MenuBar {
 	
-	RdesktopFrame parent;
-	
+	private RdesktopFrame parent;
+
     /**
      * Initialise the properJavaRDP menu bar and attach to an RdesktopFrame
      * @param parent Menu is attached to this frame
@@ -36,8 +32,8 @@ public class RdpMenu extends MenuBar {
 		MenuItem item;
 
 		this.parent = parent;
-		
-		Menu m = new Menu("File");
+
+		Menu m = new Menu("RDC");
 
 		item = new MenuItem("Send CTRL-ALT-DEL");
 		item.addActionListener(new ActionListener() {
@@ -54,7 +50,7 @@ public class RdpMenu extends MenuBar {
 		item.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent e)
 			{
-				Common.exit();
+				exitFrame();
 			}
 		});
 		m.add(item);
@@ -67,22 +63,37 @@ public class RdpMenu extends MenuBar {
 			m.add(new MenuItem("Turn Caps-Lock On"));
 			m.add(new MenuItem("Turn Num-Lock On"));
 			m.add(new MenuItem("Turn Scroll-Lock On"));
-			this.add(m);
-			
-		m = new Menu("Display");
-			MenuItem mi = null;
-			
-			if(!Options.fullscreen){  
-				mi = new MenuItem("Fullscreen Mode");
-				mi.disable();
-			}else mi = new MenuItem("Windowed Mode");
-			
-			m.add(mi);
-			this.add(m);
-*/
+			this.add(m); */
+
+//		m = new Menu("Display");
+//
+//			if(!parent.getOption().isFullscreen()){
+//				item = new MenuItem("Fullscreen Mode");
+//				item.addActionListener(new ActionListener() {
+//			         public void actionPerformed(ActionEvent e)
+//			         {
+//                         goFullScreen();
+//			         }
+//		        });
+//                //mi.disable();
+//			}else item = new MenuItem("Windowed Mode");
+//
+//			m.add(item);
+//			this.add(m);
+
 	}
-	
-	/**
+
+    private void goFullScreen() {
+        Dimension screen_size = Toolkit.getDefaultToolkit().getScreenSize();
+        // ensure width a multiple of 4
+        parent.getOption().setWidth(screen_size.width & ~3);
+        parent.getOption().setHeight(screen_size.height);
+        parent.getOption().enableFullScreen();
+        parent.goFullScreen();
+    }
+
+
+    /**
 	 * @deprecated Replaced by action listeners.
 	 */
 	public boolean action(Event event, Object arg) {
@@ -110,10 +121,18 @@ public class RdpMenu extends MenuBar {
 */
 		return false;
     }
-	
-	private void sendCtrlAltDel()
+
+
+    private void sendCtrlAltDel()
 	{
 		RdesktopCanvas canvas = parent.getCanvas();
-		canvas.getInput().sendCtrlAltDel();
+        canvas.sendCtrlAltDel();
+		
+	}
+
+    private void exitFrame()
+	{
+        Rdesktop.stopApplet(parent.getOption().getDisconnectHandler());
+        parent.disconnectPlayer();
 	}
 }

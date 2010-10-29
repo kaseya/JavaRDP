@@ -15,6 +15,7 @@ import java.io.*;
 import java.net.*;
 
 import com.elusiva.rdp.crypto.CryptoException;
+import com.elusiva.rdp.rdp5.Rdp5;
 
 import org.apache.log4j.Logger;
 
@@ -74,21 +75,23 @@ public abstract class ISO {
      * Connect to a server
      * @param host Address of server
      * @param port Port to connect to on server
+     * @param option
+     * @param rdpLayer
      * @throws IOException
      * @throws RdesktopException
      * @throws OrderException
      * @throws CryptoException
      */
-    public void connect(InetAddress host, int port) throws IOException, RdesktopException, OrderException, CryptoException {
+    public void connect(InetAddress host, int port, Options option, Rdp rdpLayer) throws IOException, RdesktopException, OrderException, CryptoException {
 	int[] code = new int[1];
 	doSocketConnect(host,port);
-	rdpsock.setTcpNoDelay(Options.low_latency);
+	rdpsock.setTcpNoDelay(option.isLowLatency());
 	// this.in = new InputStreamReader(rdpsock.getInputStream());
     this.in = new DataInputStream(new BufferedInputStream(rdpsock.getInputStream()));
 	this.out= new DataOutputStream(new BufferedOutputStream(rdpsock.getOutputStream()));
-	send_connection_request();
+	send_connection_request(option);
 	
-	receiveMessage(code);
+	receiveMessage(code, option, rdpLayer);
 	if (code[0] != CONNECTION_CONFIRM) {
 	    throw new RdesktopException("Expected CC got:" + Integer.toHexString(code[0]).toUpperCase());
 	}
@@ -134,10 +137,11 @@ public abstract class ISO {
     /**
      * Send a packet to the server, wrapped in ISO PDU
      * @param buffer Packet containing data to send to server
+     * @param option
      * @throws RdesktopException
      * @throws IOException
      */
-    public void send(RdpPacket_Localised buffer) throws RdesktopException, IOException {
+    public void send(RdpPacket_Localised buffer, Options option) throws RdesktopException, IOException {
 	if(rdpsock == null || out==null) return;
 	if (buffer.getEnd() < 0) {
 	    throw new RdesktopException("No End Mark!");
@@ -154,7 +158,7 @@ public abstract class ISO {
 	    buffer.set8(DATA_TRANSFER);
 	    buffer.set8(EOT);
 	    buffer.copyToByteArray(packet, 0, 0, buffer.getEnd());
-	    if(Options.debug_hexdump) dump.encode(packet, "SEND"/*System.out*/);
+	    if(option.isHexdumpDebugEnabled()) dump.encode(packet, "SEND"/*System.out*/);
 	    out.write(packet);
 	    out.flush();
 	}
@@ -166,11 +170,11 @@ public abstract class ISO {
      * @throws IOException
      * @throws RdesktopException
      * @throws OrderException
-     * @throws CryptoException
+     * @throws CryptoException  @param option  @param rdpLayer
      */
- 	public RdpPacket_Localised receive() throws IOException, RdesktopException, OrderException, CryptoException {
+ 	public RdpPacket_Localised receive(Options option, Rdp rdpLayer) throws IOException, RdesktopException, OrderException, CryptoException {
 		int[] type = new int[1];
-		RdpPacket_Localised buffer = receiveMessage(type);
+		RdpPacket_Localised buffer = receiveMessage(type, option, rdpLayer);
 		if(buffer==null) return null;
 		if (type[0] != DATA_TRANSFER) {
 			throw new RdesktopException("Expected DT got:" + type[0]);
@@ -183,10 +187,11 @@ public abstract class ISO {
      * Receive a specified number of bytes from the server, and store in a packet
      * @param p Packet to append data to, null results in a new packet being created
      * @param length Length of data to read
+     * @param option
      * @return Packet containing read data, appended to original data if provided
      * @throws IOException
      */
- 	private RdpPacket_Localised tcp_recv(RdpPacket_Localised p, int length) throws IOException{
+ 	private RdpPacket_Localised tcp_recv(RdpPacket_Localised p, int length, Options option) throws IOException{
  		logger.debug("ISO.tcp_recv");
  		RdpPacket_Localised buffer = null; 		
  		
@@ -197,7 +202,7 @@ public abstract class ISO {
         
         // try{ }
 		// catch(IOException e){ logger.warn("IOException: " + e.getMessage()); return null;	}
-		if(Options.debug_hexdump) dump.encode(packet, "RECEIVE" /*System.out*/);
+		if(option.isHexdumpDebugEnabled()) dump.encode(packet, "RECEIVE" /*System.out*/);
 			
  		if(p == null){
  			buffer = new RdpPacket_Localised(length);
@@ -219,13 +224,15 @@ public abstract class ISO {
     /**
      * Receive a message from the server
      * @param type Array containing message type, stored in type[0]
+     * @param option
+     * @param rdpLayer
      * @return Packet object containing data of message
      * @throws IOException
      * @throws RdesktopException
      * @throws OrderException
      * @throws CryptoException
      */
- 	private RdpPacket_Localised receiveMessage(int[] type) throws IOException, RdesktopException, OrderException, CryptoException {
+ 	private RdpPacket_Localised receiveMessage(int[] type, Options option, Rdp rdpLayer) throws IOException, RdesktopException, OrderException, CryptoException {
  		logger.debug("ISO.receiveMessage");
  		RdpPacket_Localised s = null;
  		int length, version;
@@ -234,7 +241,7 @@ public abstract class ISO {
  		next_packet:
  			while(true){
  				logger.debug("next_packet");
- 				s = tcp_recv(null,4);
+ 				s = tcp_recv(null,4, option);
  				if(s == null) return null;
  			
  				version = s.get8();
@@ -250,11 +257,11 @@ public abstract class ISO {
 					}
  				}
  				
- 				s = tcp_recv(s, length - 4);
+ 				s = tcp_recv(s, length - 4, option);
  				if(s == null) return null;
  				if((version & 3) == 0){
- 					logger.debug("Processing rdp5 packet");
- 					Common.rdp.rdp5_process(s, (version & 0x80) != 0);
+ 					logger.info("Processing rdp5 packet");
+ 					rdpLayer.rdp5_process(s, (version & 0x80) != 0, option);
  					continue next_packet;
  				}else break;
  			}
@@ -297,12 +304,12 @@ public abstract class ISO {
    /**
     * Send the server a connection request, detailing client protocol version
     * @throws IOException
+    * @param option
     */
-	void send_connection_request() throws IOException{
+	void send_connection_request(Options option) throws IOException{
 		                       
-        String uname = Options.username;
-		if(uname.length() > 9) uname = uname.substring(0,9);
-		int length = 11 + (Options.username.length() > 0 ? ("Cookie: mstshash=".length() + uname.length() + 2) : 0) + 8;
+        String uname = option.getUsernameTenCharacterLong();
+		int length = 11 + (option.isUsernameSet() ? ("Cookie: mstshash=".length() + uname.length() + 2) : 0) + 8;
 		RdpPacket_Localised buffer = new RdpPacket_Localised(length);
 		byte[] packet=new byte[length];
 	
@@ -314,7 +321,7 @@ public abstract class ISO {
 		buffer.setBigEndian16(0); // Destination reference ( 0 at CC and DR)
 		buffer.setBigEndian16(0); // source reference should be a reasonable address we use 0
 		buffer.set8(0); //service class 
-		if(Options.username.length() > 0){
+		if(option.isUsernameSet()){
 			logger.debug("Including username");
 			buffer.out_uint8p("Cookie: mstshash=","Cookie: mstshash=".length());
 			buffer.out_uint8p(uname,uname.length());

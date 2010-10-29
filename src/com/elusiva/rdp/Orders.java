@@ -25,7 +25,7 @@ public class Orders {
 
     private RdesktopCanvas surface = null;
 
-    public static Cache cache = null;
+    public  Cache cache = null;
 
     /* RDP_BMPCACHE2_ORDER */
     private static final int ID_MASK = 0x0007;
@@ -110,11 +110,12 @@ public class Orders {
      * @param data Packet packet containing orders
      * @param next_packet Offset of end of this packet (start of next)
      * @param n_orders Number of orders sent in this packet
+     * @param option
      * @throws OrderException
      * @throws RdesktopException
      */
     public void processOrders(RdpPacket_Localised data, int next_packet,
-            int n_orders) throws OrderException, RdesktopException {
+                              int n_orders, Options option) throws OrderException, RdesktopException {
 
         int present = 0;
         // int n_orders = 0;
@@ -131,7 +132,7 @@ public class Orders {
             }
 
             if ((order_flags & RDP_ORDER_SECONDARY) != 0) {
-                this.processSecondaryOrders(data);
+                this.processSecondaryOrders(data, option);
             } else {
 
                 if ((order_flags & RDP_ORDER_CHANGE) != 0) {
@@ -264,10 +265,11 @@ public class Orders {
     /**
      * Handle secondary, or caching, orders
      * @param data Packet containing secondary order
+     * @param option
      * @throws OrderException
      * @throws RdesktopException
      */
-    private void processSecondaryOrders(RdpPacket_Localised data)
+    private void processSecondaryOrders(RdpPacket_Localised data, Options option)
             throws OrderException, RdesktopException {
         int length = 0;
         int type = 0;
@@ -284,7 +286,7 @@ public class Orders {
 
         case RDP_ORDER_RAW_BMPCACHE:
             logger.debug("Raw BitmapCache Order");
-            this.processRawBitmapCache(data);
+            this.processRawBitmapCache(data, option);
             break;
 
         case RDP_ORDER_COLCACHE:
@@ -294,7 +296,7 @@ public class Orders {
 
         case RDP_ORDER_BMPCACHE:
             logger.debug("Bitmapcache Order");
-            this.processBitmapCache(data);
+            this.processBitmapCache(data, option);
             break;
 
         case RDP_ORDER_FONTCACHE:
@@ -304,7 +306,7 @@ public class Orders {
 
         case RDP_ORDER_RAW_BMPCACHE2:
             try {
-                this.process_bmpcache2(data, flags, false);
+                this.process_bmpcache2(data, flags, false, option);
             } catch (IOException e) {
                 throw new RdesktopException(e.getMessage());
             } /* uncompressed */
@@ -312,7 +314,7 @@ public class Orders {
 
         case RDP_ORDER_BMPCACHE2:
             try {
-                this.process_bmpcache2(data, flags, true);
+                this.process_bmpcache2(data, flags, true, option);
             } catch (IOException e) {
                 throw new RdesktopException(e.getMessage());
             } /* compressed */
@@ -328,9 +330,10 @@ public class Orders {
     /**
      * Process a raw bitmap and store it in the bitmap cache
      * @param data Packet containing raw bitmap data
+     * @param option
      * @throws RdesktopException
      */
-    private void processRawBitmapCache(RdpPacket_Localised data)
+    private void processRawBitmapCache(RdpPacket_Localised data, Options option)
             throws RdesktopException {
         int cache_id = data.get8();
         data.incrementPosition(1); // pad
@@ -354,7 +357,7 @@ public class Orders {
         }
 
         cache.putBitmap(cache_id, cache_idx, new Bitmap(Bitmap.convertImage(
-                inverted, Bpp), width, height, 0, 0), 0);
+                inverted, Bpp, option), width, height, 0, 0), 0);
     }
 
     /**
@@ -396,9 +399,10 @@ public class Orders {
     /**
      * Process a compressed bitmap and store in the bitmap cache
      * @param data Packet containing compressed bitmap
+     * @param option
      * @throws RdesktopException
      */
-    private void processBitmapCache(RdpPacket_Localised data)
+    private void processBitmapCache(RdpPacket_Localised data, Options option)
             throws RdesktopException {
         int bufsize, pad2, row_size, final_size, size;
         int pad1;
@@ -420,7 +424,7 @@ public class Orders {
          * final_size
          */
 
-        if (Options.use_rdp5) {
+        if (option.shouldUseRdp5()) {
 
             /* Begin compressedBitmapData */
             pad2 = data.getLittleEndian16(); // in_uint16_le(s, pad2); /* pad
@@ -451,11 +455,11 @@ public class Orders {
             byte[] pixel = Bitmap.decompress(width, height, size, data, Bpp);
             if (pixel != null)
                 cache.putBitmap(cache_id, cache_idx, new Bitmap(Bitmap
-                        .convertImage(pixel, Bpp), width, height, 0, 0), 0);
+                        .convertImage(pixel, Bpp, option), width, height, 0, 0), 0);
             else
                 logger.warn("Failed to decompress bitmap");
         } else {
-            int[] pixel = Bitmap.decompressInt(width, height, size, data, Bpp);
+            int[] pixel = Bitmap.decompressInt(width, height, size, data, Bpp, option);
             if (pixel != null)
                 cache.putBitmap(cache_id, cache_idx, new Bitmap(pixel, width,
                         height, 0, 0), 0);
@@ -472,11 +476,12 @@ public class Orders {
      * @param data Packet containing order and bitmap data
      * @param flags Set of flags defining mode of order
      * @param compressed True if bitmap data is compressed
+     * @param option
      * @throws RdesktopException
      * @throws IOException
      */
     private void process_bmpcache2(RdpPacket_Localised data, int flags,
-            boolean compressed) throws RdesktopException, IOException {
+                                   boolean compressed, Options option) throws RdesktopException, IOException {
         Bitmap bitmap;
         int y;
         int cache_id, cache_idx_low, width, height, Bpp;
@@ -486,7 +491,7 @@ public class Orders {
         bitmap_id = new byte[8]; /* prevent compiler warning */
         cache_id = flags & ID_MASK;
         Bpp = ((flags & MODE_MASK) >> MODE_SHIFT) - 2;
-        Bpp = Options.Bpp;
+        Bpp = option.getColourDepthInBytes();
         if ((flags & PERSIST) != 0) {
             bitmap_id = new byte[8];
             data.copyToByteArray(bitmap_id, 0, data.getPosition(), 8);
@@ -521,10 +526,10 @@ public class Orders {
         if (compressed) {
             if (Bpp == 1)
                 bmpdataInt = Bitmap.convertImage(Bitmap.decompress(width,
-                        height, bufsize, data, Bpp), Bpp);
+                        height, bufsize, data, Bpp), Bpp, option);
             else
                 bmpdataInt = Bitmap.decompressInt(width, height, bufsize, data,
-                        Bpp);
+                        Bpp, option);
 
             if (bmpdataInt == null) {
                 logger.debug("Failed to decompress bitmap data");
@@ -550,7 +555,7 @@ public class Orders {
                                                                         // *
                                                                         // Bpp);
 
-            bitmap = new Bitmap(Bitmap.convertImage(bmpdata, Bpp), width,
+            bitmap = new Bitmap(Bitmap.convertImage(bmpdata, Bpp, option), width,
                     height, 0, 0);
         }
 
@@ -561,7 +566,7 @@ public class Orders {
             // cache_put_bitmap(cache_id, cache_idx, bitmap, 0);
             if ((flags & PERSIST) != 0)
                 PstCache.pstcache_put_bitmap(cache_id, cache_idx, bitmap_id,
-                        width, height, width * height * Bpp, bmpdata);
+                        width, height, width * height * Bpp, bmpdata, option);
         } else {
             logger.debug("process_bmpcache2: ui_create_bitmap failed");
         }
@@ -1154,7 +1159,7 @@ public class Orders {
      * @param cache Cache object to set as current global cache
      */
     public void registerCache(Cache cache) {
-        Orders.cache = cache;
+        this.cache = cache;
     }
 
     /**

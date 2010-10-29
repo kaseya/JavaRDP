@@ -80,8 +80,9 @@ public class ClipChannel extends VChannel implements ClipInterface, ClipboardOwn
 	// All type handlers available
 	TypeHandlerList allHandlers = null;
 	byte[] localClipData = null;
-	
-	public ClipChannel(){
+    protected Options option;
+    
+	public ClipChannel(Options option){
 		this.clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
 		
 		// initialise all clipboard format handlers
@@ -89,10 +90,12 @@ public class ClipChannel extends VChannel implements ClipInterface, ClipboardOwn
 		allHandlers.add(new UnicodeHandler());
 		allHandlers.add(new TextHandler());
 		allHandlers.add(new DIBHandler());
+        this.option = option;
 		//allHandlers.add(new MetafilepictHandler());
+        this.secureLayer = null;
 	}
-	
-	/* 
+
+	/*
 	 * VChannel inherited abstract methods
 	 */
 	public String name() {
@@ -103,6 +106,8 @@ public class ClipChannel extends VChannel implements ClipInterface, ClipboardOwn
 		return VChannels.CHANNEL_OPTION_INITIALIZED | VChannels.CHANNEL_OPTION_ENCRYPT_RDP |
 		 VChannels.CHANNEL_OPTION_COMPRESS_RDP | VChannels.CHANNEL_OPTION_SHOW_PROTOCOL;
 	}
+
+
 	
 	/*
 	 * Data processing methods
@@ -192,7 +197,7 @@ public class ClipChannel extends VChannel implements ClipInterface, ClipboardOwn
 		s.setLittleEndian16(CLIPRDR_REQUEST);
 		s.setLittleEndian32(number_of_formats * 36);
 		
-		TypeHandler handler = null;
+		TypeHandler handler;
 		for(Iterator i = availableFormats.iterator(); i.hasNext();){
 			handler = (TypeHandler) i.next();
 			s.setLittleEndian32(handler.preferredFormat());
@@ -226,8 +231,7 @@ public class ClipChannel extends VChannel implements ClipInterface, ClipboardOwn
 	{
 		int format = data.getLittleEndian32();
 		Transferable clipData = clipboard.getContents(this);
-		byte[] outData = null;
-		
+
 		TypeHandler outputHandler = allHandlers.getHandlerForFormat(format);
 		if(outputHandler != null){
 			outputHandler.send_data(clipData, this);
@@ -253,7 +257,7 @@ public class ClipChannel extends VChannel implements ClipInterface, ClipboardOwn
 	
 	void request_clipboard_data(int formatcode)throws RdesktopException,IOException,CryptoException{
 	
-		RdpPacket_Localised s = Common.secure.init(Constants.encryption ? Secure.SEC_ENCRYPT : 0, 24);
+		RdpPacket_Localised s = getSecureLayer().init(Constants.encryption ? Secure.SEC_ENCRYPT : 0, 24);
 		s.setLittleEndian32(16); // length
 		
 		int flags = VChannels.CHANNEL_FLAG_FIRST | VChannels.CHANNEL_FLAG_LAST;
@@ -267,11 +271,11 @@ public class ClipChannel extends VChannel implements ClipInterface, ClipboardOwn
 		s.setLittleEndian32(0); // Unknown. Garbage pad?
 		s.markEnd();
 		
-		Common.secure.send_to_channel(s, Constants.encryption ? Secure.SEC_ENCRYPT : 0, this.mcs_id());
+		getSecureLayer().send_to_channel(s, Constants.encryption ? Secure.SEC_ENCRYPT : 0, this.mcs_id());
 	}
 	
 	public void
-	send_data(byte []data, int length)
+	send_data(byte[] data, int length)
 	{
 		CommunicationMonitor.lock(this);
 				
@@ -309,8 +313,8 @@ public class ClipChannel extends VChannel implements ClipInterface, ClipboardOwn
 	 */
 	public void focusGained(FocusEvent arg0) {
 		// synchronise the clipboard types here, so the server knows what's available	
-		if(Options.use_rdp5){
-			try { send_format_announce(); } 
+		if(option.shouldUseRdp5()){
+			try { send_format_announce(); }
 			catch (RdesktopException e) {} 
 			catch (IOException e) {}
 			catch (CryptoException e) {}
@@ -319,16 +323,9 @@ public class ClipChannel extends VChannel implements ClipInterface, ClipboardOwn
 
 	public void focusLost(FocusEvent arg0) {}
 
-	/*
-	 * Support methods
-	 */
-	private void reset_bool(boolean[] x){
-		for(int i = 0; i < x.length; i++) x[i] = false;
-	}
-	
-	/*
-	 * ClipboardOwner methods
-	 */
+    /*
+      * ClipboardOwner methods
+      */
 	public void lostOwnership(Clipboard arg0, Transferable arg1) {
 		logger.debug("Lost clipboard ownership");
 	}

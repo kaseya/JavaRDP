@@ -10,10 +10,9 @@
   
   <target name="init-common">
     <mkdir dir="${build.dir}"/>
-    <mkdir dir="${build.dir}1.1"/>
-    <mkdir dir="${build.dir}1.2"/>
-    <mkdir dir="${build.dir}1.3"/>
-    <mkdir dir="${build.dir}1.4"/>
+    <mkdir dir="${build.dir}1.5"/>
+    <mkdir dir="${build.dir}1.6"/> 
+
     <mkdir dir="${dist.dir}" />
      
     <mkdir dir="${build.dir}/keymaps"/>
@@ -26,7 +25,10 @@
   <target name="generate-product-version" depends="init-common">
     <javac srcdir="${src.dir}"
            includes="**/Version.java"
-           destdir="${build.dir}"/>
+           destdir="${build.dir}"
+           verbose="true"
+           debug="on"
+           debuglevel="lines, sources, vars"/>
     <java classpath="${build.dir}"
           classname="com.elusiva.rdp.Version">
       <arg value="${build.dir}/product.version"/>
@@ -34,10 +36,12 @@
   </target>
 
   <target name="build-common-version">
-    <javac srcdir="${src.dir}:${src.dir}${java.version}"
+    <javac srcdir="${src.dir}:${src.dir}${src.version}"
            destdir="${build.dir}"
            classpathref="build.classpath"
            fork="true"
+           debug="on"
+           debuglevel="lines, sources,vars"
            target="${java.version}">
     </javac>
     <mkdir dir="${build.dir}${java.version}/com/elusiva/rdp"/>
@@ -51,23 +55,19 @@
          Note this will be replaced by an antCall element when we can
          be assured everyone will have Ant 1.5.2
       -->
-    <ant antfile="${commonxml}" target="build-common-version">
-      <property name="java.version" value="1.1"/>
+    <ant target="build-common-version">
+      <property name="java.version" value="1.5"/>
+      <property name="src.version" value="1.5"/>
+
     </ant>
 
-    <ant antfile="${commonxml}" target="build-common-version">
-      <property name="java.version" value="1.2"/>
+
+    <ant target="build-common-version">
+      <property name="java.version" value="1.6"/>
+      <property name="src.version" value="1.5"/>
     </ant>
 
-    <ant antfile="${commonxml}" target="build-common-version">
-      <property name="java.version" value="1.3"/>
-    </ant>
-
-    <ant antfile="${commonxml}" target="build-common-version">
-      <property name="java.version" value="1.4"/>
-    </ant>
-
-    <ant antfile="${commonxml}" target="generate-product-version"/>
+    <ant target="generate-product-version"/>
     <property file="${build.dir}/product.version"/>
   
   </target>
@@ -78,18 +78,13 @@
       <fileset dir="${basedir}/keymaps"/>
     </copy>
     <jar jarfile="${dist.dir}/${jar.path}" basedir="${build.dir}/"/>
-    <jar jarfile="${dist.dir}/${jar.path.14}" basedir="${build.dir}1.4/"/>
-    <jar jarfile="${dist.dir}/${jar.path.13}" basedir="${build.dir}1.3/"/>
-    <jar jarfile="${dist.dir}/${jar.path.12}" basedir="${build.dir}1.2/"/>
-    <jar jarfile="${dist.dir}/${jar.path.11}" basedir="${build.dir}1.1/"/>
+    <jar jarfile="${dist.dir}/${jar.path.15}" basedir="${build.dir}1.5/"/>
   </target>
   
   <target name="clean-common">
     <delete dir="${build.dir}" />  
-    <delete dir="${build.dir}1.4" />
-    <delete dir="${build.dir}1.3" />
-    <delete dir="${build.dir}1.2" />  
-    <delete dir="${build.dir}1.1" />              
+    <delete dir="${build.dir}1.5" />
+    <delete dir="${build.dir}1.6" />
     <delete dir="${dist.dir}" />
   </target>
 </project>

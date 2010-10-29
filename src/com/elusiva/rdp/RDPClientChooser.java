@@ -30,8 +30,9 @@ public class RDPClientChooser {
     /**
      * Public method to locate and run a native RDP client (currently only on Mac OS)
      * @param args Arguments to provide to native client
+     * @param option
      */
-	public boolean RunNativeRDPClient(String[] args)
+	public boolean RunNativeRDPClient(String[] args, Options option)
 	{
 		logger.info("RDPClientChooser.RunNativeRDPClient");
 		
@@ -41,10 +42,10 @@ public class RDPClientChooser {
 		// For Mac OS X we try to run the Microsoft Remote Desktop Connection RDP client if it exists
 
 		if(os.startsWith("Mac OS X")) {
-			if (new File("/Applications/Remote Desktop Connection/Remote Desktop Connection").exists()) {
+			if (new File("/Applications/Remote Desktop Connection").exists()) {
 				logger.info("MAC OS X Microsoft Remote Desktop Connection exists");
 				try {
-					return RunMacRemoteDesktopConnection(args);
+					return RunMacRemoteDesktopConnection(args, option);
 				}
 				catch (IOException e) {
 					logger.info("MAC OS X Microsoft Remote Desktop Connection not found");
@@ -73,8 +74,9 @@ public class RDPClientChooser {
     /**
      * Private method to run the Mac OS RDP client provided by Microsoft
      * @param args Arguments to provide to native client
+     * @param option
      */
-	private boolean RunMacRemoteDesktopConnection(String[] args) 
+	private boolean RunMacRemoteDesktopConnection(String[] args, Options option)
 	throws IOException 
 	{
 		logger.info("RunMacRemoteDesktopConnection()");
@@ -83,7 +85,7 @@ public class RDPClientChooser {
 		int c;
 		String arg;
 		
-		Options.windowTitle = "Remote Desktop Connection";
+		option.setWindowTitle("Remote Desktop Connection");
 
 		// Process arguments (there are more than we need now - need to reduce - also need to check for correct args)
 		
@@ -94,32 +96,32 @@ public class RDPClientChooser {
 			switch (c) {
 			
 				case 'd':
-					Options.domain = g.getOptarg();		 
+					option.setDomain(g.getOptarg());
 					break;	
 					
 				case 'n':
-					Options.hostname = g.getOptarg();
+					option.setHostname(g.getOptarg());
 					break;
 
 				case 'p':
-					Options.password = g.getOptarg();
+					option.setPassword(g.getOptarg());
 					break;	
 
 				case 't':
 					arg = g.getOptarg();
 					try {
-						Options.port = Integer.parseInt(arg);
+						option.setPort(Integer.parseInt(arg));
 					}
 					catch (Exception e) {
 					}
 					break;
 					
 				case 'T':
-					Options.windowTitle = g.getOptarg().replace('_',' ');
+					option.setWindowTitle(g.getOptarg().replace('_',' '));
 					break;
 
 				case 'u':
-					Options.username = g.getOptarg();		 
+					option.setUsername(g.getOptarg());
 					break;
 
 				case '?':
@@ -140,7 +142,7 @@ public class RDPClientChooser {
 			}
 			else{
 				server = args[args.length-1].substring(0,colonat);
-				Options.port = Integer.parseInt(args[args.length-1].substring(colonat+1));
+				option.setPort(Integer.parseInt(args[args.length-1].substring(colonat+1)));
 			}
 		}
 		else {
@@ -151,7 +153,7 @@ public class RDPClientChooser {
 		// Create a temporary directory from which to run RDC - we do this so that
 		// we can run multiple instances
 		
-		String rdproot = "/var/tmp/RDP-"+Options.hostname+"-"+Options.port;
+		String rdproot = "/var/tmp/RDP-"+ option.getHostname() +"-"+ option.getPort();
 		
 		try {
 			new File(rdproot).mkdir();
@@ -177,16 +179,16 @@ public class RDPClientChooser {
 		rdpConfigFile.write("session bpp:i:8\n");	// 256 colors
 		rdpConfigFile.write("winposstr:s:0,3,0,0,800,600\n");
 		rdpConfigFile.write("auto connect:i:1\n");
-		rdpConfigFile.write("full address:s:"+server+":"+Options.port+"\n");
+		rdpConfigFile.write("full address:s:"+server+":"+ option.getPort() +"\n");
 		rdpConfigFile.write("compression:i:1\n");
 		rdpConfigFile.write("rightclickmodifiers:i:4608\n");
 		rdpConfigFile.write("altkeyreplacement:i:0\n");
 		rdpConfigFile.write("audiomode:i:1\n");
 		rdpConfigFile.write("redirectdrives:i:1\n");
 		rdpConfigFile.write("redirectprinters:i:1\n");
-		rdpConfigFile.write("username:s:"+Options.username+"\n");
-		rdpConfigFile.write("clear password:s:"+Options.password+"\n");
-		rdpConfigFile.write("domain:s:"+Options.domain+"\n");
+		rdpConfigFile.write("username:s:"+ option.getUsernameImpl() +"\n");
+		rdpConfigFile.write("clear password:s:"+ option.getPassword() +"\n");
+		rdpConfigFile.write("domain:s:"+ option.getDomain() +"\n");
 		rdpConfigFile.write("alternate shell:s:\n");
 		rdpConfigFile.write("shell working directory:s:\n");
 		rdpConfigFile.write("preference flag id:i:2\n");
@@ -252,7 +254,7 @@ public class RDPClientChooser {
 
 		// Move the application to the name of the title so that the running application shows when using ALT-TAB etc.
 		
-		String[] mvcmd = {"/bin/sh", "-c", "mv "+rdproot+"/Remote\\ Desktop\\ Connection '"+rdproot+"/"+Options.windowTitle+"' >/dev/null 2>/dev/null"};
+		String[] mvcmd = {"/bin/sh", "-c", "mv "+rdproot+"/Remote\\ Desktop\\ Connection '"+rdproot+"/"+ option.getWindowTitle() +"' >/dev/null 2>/dev/null"};
 
 		try {		
 			Process p = Runtime.getRuntime().exec(mvcmd);
@@ -273,7 +275,7 @@ public class RDPClientChooser {
 		
 		// Run an instance of the RDP Client using the Mac OS X "open" command
 		
-		String[] rdpcmd = {"/bin/sh", "-c", "open -a '"+rdproot+"/"+Options.windowTitle+"' "+rdproot+"/Default.rdp >/dev/null 2>/dev/null"};
+		String[] rdpcmd = {"/bin/sh", "-c", "open -a '"+rdproot+"/"+ option.getWindowTitle() +"' "+rdproot+"/Default.rdp >/dev/null 2>/dev/null"};
 		
 		try {		
 			Process p = Runtime.getRuntime().exec(rdpcmd);
