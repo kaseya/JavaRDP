@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="JavaRDP" default="dist" basedir=".">
+  <property name="jar.name" value="properJavaRDP"/>
+  <property name="dist.dir" value="${basedir}/dist"/>
+  <property name="build.dir" value="${basedir}/build"/>
+  <property name="src.dir" value="${basedir}/src"/>
+  <property name="rpm.dir" value="${basedir}/rpm"/>
+
+  <property name="java.log4j11.package" value="${basedir}/log4j-java1.1"/>
+  <property name="java.getopt.package" value="${basedir}/gnu-getopt-1.0.11-java/lib"/>
+	
+  <property name="log4j.java11" value="log4j-java1.1"/>
+  <property name="jar.log4j.java11" value="log4j-java1.1.jar"/>
+  <property name="jar.gnugetopt" value="java-getopt-1.0.11.jar"/>
+  <property name="commonxml" value="${basedir}/build-common.xml"/>
+  <property name="runclass" value="com.elusiva.rdp.Rdesktop"/>
+
+  <!-- Load additional and personalised properties -->
+  <property file="${basedir}/project.properties"/>
+
+  <target name="init">
+    <ant antfile="${commonxml}" target="init-common"/>
+  </target>
+
+  <target name="build" depends="init">
+    <ant antfile="${commonxml}" target="build-common"/>
+    <property file="${build.dir}/product.version"/>
+  </target>
+          
+  <target name="jar" depends="build">
+    <property name="jar.path" value="${jar.name}-${product.version}.jar" />
+    <property name="jar.path.14" value="${jar.name}14-${product.version}.jar" />
+    <property name="jar.path.13" value="${jar.name}13-${product.version}.jar" />
+    <property name="jar.path.12" value="${jar.name}12-${product.version}.jar" />
+    <property name="jar.path.11" value="${jar.name}11-${product.version}.jar" />
+    <mkdir dir="${dist.dir}" />
+    <ant antfile="${commonxml}" target="jar-common"/>
+  </target>
+
+	  <target name="dist" depends="jar">
+	    <jar jarfile="${dist.dir}/${jar.log4j.java11}" 
+		      defaultexcludes="no"
+		      excludes="META-INF/*">
+		<zipfileset src="${java.log4j11.package}/${jar.log4j.java11}" excludes="META-INF/*"/>
+	    </jar>
+
+	    <jar jarfile="${dist.dir}/${jar.gnugetopt}" 
+		      defaultexcludes="no"
+		      excludes="META-INF/*">
+		<zipfileset src="${java.getopt.package}/${jar.gnugetopt}" excludes="META-INF/*"/>
+	    </jar>
+
+	  </target>
+	
+  <target name="standalone" depends="init">
+    <uptodate targetfile="${ant.file}" property="build.changed">
+      <srcfiles dir="${src.dir}" includes="**/*.java"/>
+      <srcfiles dir="${src.dir}1.4" includes="**/*.java"/>
+     </uptodate>
+
+    <ant antfile="${commonxml}" target="build-common-version">
+      <property name="java.version" value="1.4"/>
+    </ant>
+
+    <ant antfile="${commonxml}" target="generate-product-version"/>
+    <property file="${build.dir}/product.version"/>
+
+    <jar destfile="${dist.dir}/JavaRDP14-${product.version}.jar" index="yes">
+      <manifest>
+        <attribute name="Built-By" value="${user.name}"/>
+        <attribute name="Main-Class" value="${runclass}"/>
+      </manifest>
+      <fileset dir="${build.dir}" includes="**/*.class"/>
+      <fileset dir="${build.dir}1.4" includes="**/*.class"/>
+      <fileset dir="${basedir}/" includes="keymaps/*"/>
+      <zipfileset src="${java.log4j11.package}/${jar.log4j.java11}" excludes="META-INF/*"/>
+      <zipfileset src="${java.getopt.package}/${jar.gnugetopt}" excludes="META-INF/*"/>
+    </jar>
+  </target>
+ 
+  <target name="run" depends="build">
+    <java classname="${runclass}">
+      <arg value="m6.propero.int"/>
+      <classpath>
+        <!-- include common class files, java 1.4 class files and log4j jar  -->
+        <pathelement path="${build.dir}"/>
+        <pathelement path="${build.dir}1.4"/>
+        <pathelement location="${jar.log4j.java11}" />
+      </classpath>
+    </java>
+  </target>
+  
+  <target name="clean">
+    <ant antfile="${commonxml}" target="clean-common"/>
+    <delete dir="${rpm.dir}" />     
+  </target>
+</project>     
+  
